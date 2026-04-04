@@ -47,6 +47,16 @@ function defaultInstallTarget() {
   return homedir()
 }
 
+async function getPromptEngine() {
+  try {
+    const module = await import('inquirer')
+    return module.default
+  }
+  catch {
+    return null
+  }
+}
+
 function renderFallbackList(message, choices, selectedIndex) {
   const lines = [`? ${message}`]
   for (const [index, choice] of choices.entries()) {
@@ -175,13 +185,31 @@ async function runMenu() {
     return
   }
 
+  const inquirer = await getPromptEngine()
+
   while (true) {
-    const action = await fallbackListPrompt(
-      'RailForge 主菜单',
-      mainMenuChoices(),
-      (selectedIndex) => `${renderMainMenuBody(selectedIndex)}\n\n↑↓ navigate • ⏎ select`,
-      renderHeader()
-    )
+    let action
+    if (inquirer) {
+      console.log()
+      console.log(renderHeader())
+      console.log()
+      const answer = await inquirer.prompt([{
+        type: 'list',
+        name: 'action',
+        message: 'RailForge 主菜单',
+        pageSize: 20,
+        choices: mainMenuChoices(),
+      }])
+      action = answer.action
+    }
+    else {
+      action = await fallbackListPrompt(
+        'RailForge 主菜单',
+        mainMenuChoices(),
+        (selectedIndex) => `${renderMainMenuBody(selectedIndex)}\n\n↑↓ navigate • ⏎ select`,
+        renderHeader()
+      )
+    }
     const target = defaultInstallTarget()
 
     if (action === 'init') {
@@ -230,12 +258,34 @@ async function runMenu() {
       return
     }
 
-    await waitForEnter('按 Enter 返回主菜单...')
+    if (inquirer) {
+      await inquirer.prompt([{
+        type: 'input',
+        name: 'continue',
+        message: '按 Enter 返回主菜单...',
+      }])
+    }
+    else {
+      await waitForEnter('按 Enter 返回主菜单...')
+    }
   }
 }
 
 async function runMcpMenu(target) {
-  const action = await fallbackListPrompt('配置 MCP', mcpMenuChoices())
+  const inquirer = await getPromptEngine()
+  let action
+  if (inquirer) {
+    const answer = await inquirer.prompt([{
+      type: 'list',
+      name: 'action',
+      message: '配置 MCP',
+      choices: mcpMenuChoices(),
+    }])
+    action = answer.action
+  }
+  else {
+    action = await fallbackListPrompt('配置 MCP', mcpMenuChoices())
+  }
   if (action === 'back') {
     return
   }
@@ -249,7 +299,20 @@ async function runMcpMenu(target) {
 }
 
 async function runModelMenu(target) {
-  const leadWriter = await fallbackListPrompt('配置模型路由', modelMenuChoices())
+  const inquirer = await getPromptEngine()
+  let leadWriter
+  if (inquirer) {
+    const answer = await inquirer.prompt([{
+      type: 'list',
+      name: 'leadWriter',
+      message: '配置模型路由',
+      choices: modelMenuChoices(),
+    }])
+    leadWriter = answer.leadWriter
+  }
+  else {
+    leadWriter = await fallbackListPrompt('配置模型路由', modelMenuChoices())
+  }
   if (leadWriter === 'back') {
     return
   }

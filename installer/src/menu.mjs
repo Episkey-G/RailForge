@@ -1,7 +1,10 @@
+import fs from 'node:fs'
 import { MCP_GROUPS } from './mcp.mjs'
 
+const { version } = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
+
 export function renderHeader() {
-  const versionLine = '║       v0.1.5  |  9 commands  |  zh-CN  |  ace-tool       ║'
+  const versionLine = `║       v${version}  |  9 commands  |  zh-CN  |  ace-tool       ║`
   return [
     '╔════════════════════════════════════════════════════════════╗',
     '║                                                            ║',
