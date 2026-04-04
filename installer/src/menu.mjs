@@ -1,7 +1,12 @@
 import { MCP_GROUPS } from './mcp.mjs'
 
-export function renderHeader() {
+export function renderHeader(selectedIndex = 0) {
   const mcpSummary = MCP_GROUPS.map((group) => `- ${group.title}: ${group.items.map((item) => item.label).join(', ')}`)
+  const versionLine = '║       v0.1.3  |  9 commands  |  zh-CN  |  ace-tool       ║'
+  const menuLines = mainMenuChoices().map((item, index) => {
+    const prefix = index === selectedIndex ? '❯' : ' '
+    return `${prefix} ${item.name}`
+  })
   return [
     '╔════════════════════════════════════════════════════════════╗',
     '║                                                            ║',
@@ -12,10 +17,22 @@ export function renderHeader() {
     '║                ██║  ██║ ██║       ██║                      ║',
     '║                ╚═╝  ╚═╝ ╚═╝       ╚═╝                      ║',
     '║                                                            ║',
-    '║                  RailForge Spec Workflow                   ║',
-    '║                 Codex + Claude + Gemini                   ║',
+    '║                 Claude + Codex + Gemini                   ║',
+    '║                Multi-Model Collaboration                  ║',
+    '║                                                            ║',
+    versionLine,
     '║                                                            ║',
     '╚════════════════════════════════════════════════════════════╝',
+    '',
+    '? RailForge 主菜单',
+    ' ────────────── Codex CLI ───────────────',
+    ...menuLines.slice(0, 4),
+    ' ──────────────── 其他工具 ────────────────',
+    ...menuLines.slice(4, 6),
+    ' ───────────────── RailForge ─────────────────',
+    ...menuLines.slice(6, 8),
+    ' ──────────────────────────────────────────',
+    menuLines[8],
     '',
     'MCP 分组：',
     ...mcpSummary
@@ -25,13 +42,13 @@ export function renderHeader() {
 export function mainMenuChoices() {
   return [
     { name: '1. 初始化 RailForge 配置      - 安装 spec 工作流', value: 'init' },
-    { name: '2. 更新工作流               - 更新命令与 skills', value: 'update' },
-    { name: '3. 配置 MCP                 - 代码检索与辅助工具', value: 'config-mcp' },
+    { name: '2. 更新工作流               - 更新到最新版本', value: 'update' },
+    { name: '3. 配置 MCP                 - 代码检索 MCP 工具', value: 'config-mcp' },
     { name: '4. 配置模型路由             - Hosted Codex / Claude / Gemini', value: 'config-model' },
     { name: 'T. 实用工具                 - doctor, probes, diagnostics', value: 'tools' },
     { name: 'C. 检查宿主 CLI             - Codex / Claude / Gemini / jq', value: 'check-cli' },
-    { name: 'H. 帮助                     - 查看 spec 工作流入口', value: 'help' },
-    { name: '-. 卸载 RailForge           - 移除工作流配置', value: 'uninstall' },
+    { name: 'H. 帮助                     - 查看全部斜杠命令', value: 'help' },
+    { name: '-. 卸载 RailForge           - 移除 RailForge 配置', value: 'uninstall' },
     { name: 'Q. 退出', value: 'quit' },
   ]
 }

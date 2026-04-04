@@ -3,7 +3,7 @@
 ## 版本
 
 - RailForge Python core: `0.1.0`
-- `railforge-workflow` installer: `0.1.3`
+- `railforge-workflow` installer: `0.1.4`
 
 ## 本次发布内容
 
@@ -62,12 +62,12 @@
 - `help`
 - `uninstall`
 
-此外，`0.1.3` 继续修复了交互式菜单展示问题：
+此外，`0.1.4` 继续对齐了安装器主菜单模板：
 
-- 即使在源码目录本地运行 `npx railforge-workflow`
-- 即使运行时没有成功加载 `inquirer`
-- 安装器仍会退回到零依赖的方向键菜单，而不是退回“输入编号或字母”
-- 同时去掉了重复渲染的静态菜单，交互界面只保留一份方向键列表
+- 主菜单重新回到接近 CCG 的静态模板布局
+- 保留方向键交互，不再退回“输入编号或字母”
+- 去掉了重复的 `? ? RailForge 主菜单` 提示
+- 菜单文案、状态行和分组结构与 CCG 风格进一步对齐
 
 ### 5. MCP 对齐
 
@@ -83,9 +83,10 @@
 - `railforge.codeagent probe --backend codex|claude|gemini`: 已验证
 - installer `doctor/update/config-model/config-mcp/probe-mcp/help/uninstall`: 已验证
 - 本地源码目录 `npx railforge-workflow`：已验证显示 `↑↓ navigate • ⏎ select`
+- 本地源码目录 `npx railforge-workflow`：已验证只显示一份 CCG 风格主菜单模板
 - 最新整仓验证：`120 passed`
 
 ## 当前边界
 
-- `railforge-workflow` 已完成 `0.1.3` 发布前验证，等待或已执行 npm 发布
+- `railforge-workflow` 已完成 `0.1.4` 发布前验证，等待或已执行 npm 发布
 - 安装器已经可用，但与 CCG 的完整菜单深度和跨宿主自动化相比仍有继续迭代空间

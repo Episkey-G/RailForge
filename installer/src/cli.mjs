@@ -43,16 +43,6 @@ function optionValue(argv, flag, fallback = null) {
   return argv[index + 1]
 }
 
-async function getPromptEngine() {
-  try {
-    const module = await import('inquirer')
-    return module.default
-  }
-  catch {
-    return null
-  }
-}
-
 function renderFallbackList(message, choices, selectedIndex) {
   const lines = [`? ${message}`]
   for (const [index, choice] of choices.entries()) {
@@ -64,7 +54,7 @@ function renderFallbackList(message, choices, selectedIndex) {
   return lines.join('\n')
 }
 
-async function fallbackListPrompt(message, choices) {
+async function fallbackListPrompt(message, choices, renderer = null) {
   const input = process.stdin
   const output = process.stdout
   const canUseRawMode = input.isTTY && typeof input.setRawMode === 'function'
@@ -77,7 +67,7 @@ async function fallbackListPrompt(message, choices) {
   let renderedLines = 0
 
   const repaint = () => {
-    const frame = renderFallbackList(message, choices, selectedIndex)
+    const frame = renderer ? renderer(selectedIndex) : renderFallbackList(message, choices, selectedIndex)
     if (renderedLines > 0) {
       output.write(`\x1b[${renderedLines}F\x1b[J`)
     }
@@ -143,57 +133,18 @@ async function fallbackInputPrompt(message) {
   }
 }
 
-async function promptWithFallback(questions, inquirer) {
-  if (inquirer) {
-    return await inquirer.prompt(questions)
-  }
-
-  const answers = {}
-  for (const question of questions) {
-    if (question.type === 'list') {
-      answers[question.name] = await fallbackListPrompt(question.message, question.choices)
-      continue
-    }
-    if (question.type === 'input') {
-      answers[question.name] = await fallbackInputPrompt(question.message)
-    }
-  }
-  return answers
-}
-
 async function runMenu() {
   if (!process.stdout.isTTY || !process.stdin.isTTY) {
-    console.log(renderHeader())
+    console.log(renderHeader(0))
     return
   }
 
-  const inquirer = await getPromptEngine()
-
   while (true) {
-    console.log(renderHeader())
-    let action
-    if (inquirer) {
-      const answer = await promptWithFallback([
-        {
-          type: 'list',
-          name: 'action',
-          message: 'RailForge 主菜单',
-          choices: mainMenuChoices(),
-        },
-      ], inquirer)
-      action = answer.action
-    }
-    else {
-      const answer = await promptWithFallback([
-        {
-          type: 'list',
-          name: 'action',
-          message: 'RailForge 主菜单',
-          choices: mainMenuChoices(),
-        },
-      ], null)
-      action = answer.action
-    }
+    const action = await fallbackListPrompt(
+      'RailForge 主菜单',
+      mainMenuChoices(),
+      (selectedIndex) => `${renderHeader(selectedIndex)}\n\n↑↓ navigate • ⏎ select`
+    )
 
     if (action === 'init') {
       console.log(JSON.stringify(await initProject(process.cwd()), null, 2))
@@ -241,43 +192,12 @@ async function runMenu() {
       return
     }
 
-    if (inquirer) {
-      await promptWithFallback([
-        {
-          type: 'input',
-          name: 'continue',
-          message: '按 Enter 返回主菜单...',
-        },
-      ], inquirer)
-    }
+    await fallbackInputPrompt('按 Enter 返回主菜单...')
   }
 }
 
 async function runMcpMenu(target) {
-  const inquirer = await getPromptEngine()
-  let action
-  if (inquirer) {
-    const answer = await promptWithFallback([
-      {
-        type: 'list',
-        name: 'action',
-        message: '配置 MCP',
-        choices: mcpMenuChoices(),
-      },
-    ], inquirer)
-    action = answer.action
-  }
-  else {
-    const answer = await promptWithFallback([
-      {
-        type: 'list',
-        name: 'action',
-        message: '配置 MCP',
-        choices: mcpMenuChoices(),
-      },
-    ], null)
-    action = answer.action
-  }
+  const action = await fallbackListPrompt('配置 MCP', mcpMenuChoices())
   if (action === 'back') {
     return
   }
@@ -291,30 +211,7 @@ async function runMcpMenu(target) {
 }
 
 async function runModelMenu(target) {
-  const inquirer = await getPromptEngine()
-  let leadWriter
-  if (inquirer) {
-    const answer = await promptWithFallback([
-      {
-        type: 'list',
-        name: 'leadWriter',
-        message: '配置模型路由',
-        choices: modelMenuChoices(),
-      },
-    ], inquirer)
-    leadWriter = answer.leadWriter
-  }
-  else {
-    const answer = await promptWithFallback([
-      {
-        type: 'list',
-        name: 'leadWriter',
-        message: '配置模型路由',
-        choices: modelMenuChoices(),
-      },
-    ], null)
-    leadWriter = answer.leadWriter
-  }
+  const leadWriter = await fallbackListPrompt('配置模型路由', modelMenuChoices())
   if (leadWriter === 'back') {
     return
   }
