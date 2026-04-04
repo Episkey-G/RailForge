@@ -1,12 +1,7 @@
 import { MCP_GROUPS } from './mcp.mjs'
 
-export function renderHeader(selectedIndex = 0) {
-  const mcpSummary = MCP_GROUPS.map((group) => `- ${group.title}: ${group.items.map((item) => item.label).join(', ')}`)
-  const versionLine = '║       v0.1.4  |  9 commands  |  zh-CN  |  ace-tool       ║'
-  const menuLines = mainMenuChoices().map((item, index) => {
-    const prefix = index === selectedIndex ? '❯' : ' '
-    return `${prefix} ${item.name}`
-  })
+export function renderHeader() {
+  const versionLine = '║       v0.1.5  |  9 commands  |  zh-CN  |  ace-tool       ║'
   return [
     '╔════════════════════════════════════════════════════════════╗',
     '║                                                            ║',
@@ -23,7 +18,16 @@ export function renderHeader(selectedIndex = 0) {
     versionLine,
     '║                                                            ║',
     '╚════════════════════════════════════════════════════════════╝',
-    '',
+  ].join('\n')
+}
+
+export function renderMainMenuBody(selectedIndex = 0) {
+  const mcpSummary = MCP_GROUPS.map((group) => `- ${group.title}: ${group.items.map((item) => item.label).join(', ')}`)
+  const menuLines = mainMenuChoices().map((item, index) => {
+    const prefix = index === selectedIndex ? '❯' : ' '
+    return `${prefix} ${item.name}`
+  })
+  return [
     '? RailForge 主菜单',
     ' ────────────── Codex CLI ───────────────',
     ...menuLines.slice(0, 4),
@@ -35,7 +39,7 @@ export function renderHeader(selectedIndex = 0) {
     menuLines[8],
     '',
     'MCP 分组：',
-    ...mcpSummary
+    ...mcpSummary,
   ].join('\n')
 }
 

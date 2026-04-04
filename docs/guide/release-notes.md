@@ -3,7 +3,7 @@
 ## 版本
 
 - RailForge Python core: `0.1.0`
-- `railforge-workflow` installer: `0.1.5`
+- `railforge-workflow` installer: `0.1.6`
 
 ## 本次发布内容
 
@@ -71,12 +71,14 @@
 - `~/.codex/AGENTS.md`、`~/.codex/config.toml`、`~/.claude/.mcp.json`、`~/.gemini/settings.json` 改为增量写入与增量回滚
 - 默认 `npx railforge-workflow` 安装根改为用户主目录下的 `~/.codex`
 
-同时，`0.1.5` 保持了对齐后的安装器主菜单模板：
+同时，`0.1.6` 继续修复了安装器交互菜单：
 
 - 主菜单重新回到接近 CCG 的静态模板布局
 - 保留方向键交互，不再退回“输入编号或字母”
 - 去掉了重复的 `? ? RailForge 主菜单` 提示
 - 菜单文案、状态行和分组结构与 CCG 风格进一步对齐
+- 方向键移动时不再重复重绘 banner
+- 菜单动作完成后，`按 Enter 返回主菜单` 会真正回到主菜单
 
 ### 5. MCP 对齐
 
@@ -88,7 +90,7 @@
 
 ## 测试结果
 
-- `python -m pytest -q`: `122 passed`
+- `python -m pytest -q`: `124 passed`
 - `railforge.codeagent probe --backend codex|claude|gemini`: 已验证
 - installer `doctor/update/config-model/config-mcp/probe-mcp/help/uninstall`: 已验证
 - 本地源码目录 `npx railforge-workflow`：已验证显示 `↑↓ navigate • ⏎ select`
@@ -97,5 +99,5 @@
 
 ## 当前边界
 
-- `railforge-workflow` 已完成 `0.1.5` 发布前验证，等待或已执行 npm 发布
+- `railforge-workflow` 已完成 `0.1.6` 发布前验证，等待或已执行 npm 发布
 - 安装器已经可用，但与 CCG 的完整菜单深度和跨宿主自动化相比仍有继续迭代空间

@@ -3,10 +3,9 @@ import { homedir } from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
 import * as readline from 'node:readline'
-import { createInterface } from 'node:readline/promises'
 
 import { initProject, probeMcpConfig, uninstallProject, updateProject, writeMcpConfig, writeModelConfig } from './commands.mjs'
-import { mainMenuChoices, mcpMenuChoices, modelMenuChoices, renderHeader } from './menu.mjs'
+import { mainMenuChoices, mcpMenuChoices, modelMenuChoices, renderHeader, renderMainMenuBody } from './menu.mjs'
 import { MCP_GROUPS } from './mcp.mjs'
 
 function detectBinary(name) {
@@ -59,7 +58,7 @@ function renderFallbackList(message, choices, selectedIndex) {
   return lines.join('\n')
 }
 
-async function fallbackListPrompt(message, choices, renderer = null) {
+async function fallbackListPrompt(message, choices, renderer = null, prefixFrame = '') {
   const input = process.stdin
   const output = process.stdout
   const canUseRawMode = input.isTTY && typeof input.setRawMode === 'function'
@@ -73,7 +72,10 @@ async function fallbackListPrompt(message, choices, renderer = null) {
 
   const repaint = () => {
     const frame = renderer ? renderer(selectedIndex) : renderFallbackList(message, choices, selectedIndex)
-    if (renderedLines > 0) {
+    if (renderedLines === 0 && prefixFrame) {
+      output.write(`${prefixFrame}\n\n`)
+    }
+    else if (renderedLines > 0) {
       output.write(`\x1b[${renderedLines}F\x1b[J`)
     }
     output.write(frame)
@@ -125,22 +127,51 @@ async function fallbackListPrompt(message, choices, renderer = null) {
   })
 }
 
-async function fallbackInputPrompt(message) {
-  const rl = createInterface({
-    input: process.stdin,
-    output: process.stdout,
+async function waitForEnter(message) {
+  const input = process.stdin
+  const output = process.stdout
+  const canUseRawMode = input.isTTY && typeof input.setRawMode === 'function'
+  readline.emitKeypressEvents(input)
+  if (canUseRawMode) {
+    input.setRawMode(true)
+  }
+  output.write(`${message} `)
+
+  return await new Promise((resolve, reject) => {
+    const cleanup = () => {
+      input.off('keypress', onKeypress)
+      input.off('end', onEnd)
+      if (canUseRawMode) {
+        input.setRawMode(false)
+      }
+      output.write('\n')
+    }
+
+    const onEnd = () => {
+      cleanup()
+      reject(new Error('prompt_aborted'))
+    }
+
+    const onKeypress = (chars, key = {}) => {
+      if (key.name === 'return' || key.name === 'enter') {
+        cleanup()
+        resolve('')
+        return
+      }
+      if (chars === '\u0004' || (key.ctrl && (key.name === 'd' || key.name === 'c'))) {
+        cleanup()
+        reject(new Error('prompt_aborted'))
+      }
+    }
+
+    input.on('keypress', onKeypress)
+    input.on('end', onEnd)
   })
-  try {
-    return await rl.question(`${message} `)
-  }
-  finally {
-    await rl.close()
-  }
 }
 
 async function runMenu() {
   if (!process.stdout.isTTY || !process.stdin.isTTY) {
-    console.log(renderHeader(0))
+    console.log(`${renderHeader()}\n\n${renderMainMenuBody(0)}`)
     return
   }
 
@@ -148,7 +179,8 @@ async function runMenu() {
     const action = await fallbackListPrompt(
       'RailForge 主菜单',
       mainMenuChoices(),
-      (selectedIndex) => `${renderHeader(selectedIndex)}\n\n↑↓ navigate • ⏎ select`
+      (selectedIndex) => `${renderMainMenuBody(selectedIndex)}\n\n↑↓ navigate • ⏎ select`,
+      renderHeader()
     )
     const target = defaultInstallTarget()
 
@@ -191,14 +223,14 @@ async function runMenu() {
       )
     }
     else if (action === 'uninstall') {
-      console.log(JSON.stringify(await uninstallProject(process.cwd()), null, 2))
+      console.log(JSON.stringify(await uninstallProject(target), null, 2))
     }
     else if (action === 'quit') {
       console.log('已退出')
       return
     }
 
-    await fallbackInputPrompt('按 Enter 返回主菜单...')
+    await waitForEnter('按 Enter 返回主菜单...')
   }
 }
 
