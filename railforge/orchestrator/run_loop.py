@@ -30,6 +30,7 @@ from railforge.guardrails.budgets import repair_decision
 from railforge.infra.checkpoint_store import FileCheckpointStore
 from railforge.infra.file_lock import WorkspaceLock
 from railforge.infra.langgraph_bridge import LangGraphBridge
+from railforge.infra.runtime_recovery import RuntimeRecovery
 from railforge.infra.run_logger import RunLogger
 from railforge.planner.backlog_builder import build_backlog
 from railforge.planner.clarification import analyze_request
@@ -51,7 +52,14 @@ class RailForgeHarness:
         self.lock = WorkspaceLock(self.layout.rf / "run.lock")
         self.contract_gate = ContractGate()
         self.interrupts = InterruptManager(self.layout)
-        self.langgraph = LangGraphBridge()
+        self.langgraph = LangGraphBridge(self.layout)
+        self.runtime_recovery = RuntimeRecovery(
+            layout=self.layout,
+            store=self.store,
+            checkpoints=self.checkpoints,
+            langgraph=self.langgraph,
+            git_adapter=self.services.git,
+        )
         self.aggregate_evaluator = AggregateEvaluator()
         self.static_evaluator = StaticEvaluator()
         self.runtime_evaluator = RuntimeEvaluator()
@@ -64,6 +72,314 @@ class RailForgeHarness:
         self._last_implementation: Optional[AdapterResult] = None
         self._last_static: Optional[PhaseEvaluationResult] = None
         self._last_reviews: List[AdapterResult] = []
+
+    @staticmethod
+    def _severity_counts(findings: List[Any]) -> Dict[str, int]:
+        counts = {"critical": 0, "warning": 0, "info": 0}
+        for finding in findings:
+            severity = getattr(finding, "severity", "")
+            if severity == "critical":
+                counts["critical"] += 1
+            elif severity in {"high", "medium", "warning"}:
+                counts["warning"] += 1
+            else:
+                counts["info"] += 1
+        return counts
+
+    @staticmethod
+    def _merge_findings(*groups: List[Any]) -> List[Any]:
+        merged: List[Any] = []
+        seen = set()
+        for group in groups:
+            for finding in group:
+                key = (
+                    getattr(finding, "severity", None),
+                    getattr(finding, "source", None),
+                    getattr(finding, "message", None),
+                    getattr(finding, "evidence", None),
+                )
+                if key in seen:
+                    continue
+                seen.add(key)
+                merged.append(finding)
+        return merged
+
+    def _build_review_summary(
+        self,
+        *,
+        mode: str,
+        scope: str,
+        status: str,
+        summary: str,
+        findings: List[Any],
+        failure_signature: Optional[str],
+        next_action: str,
+    ) -> Dict[str, Any]:
+        return {
+            "mode": mode,
+            "scope": scope,
+            "status": status,
+            "summary": summary,
+            "severity_counts": self._severity_counts(findings),
+            "failure_signature": failure_signature,
+            "next_action": next_action,
+        }
+
+    def _write_task_review_markdown(
+        self,
+        task: TaskItem,
+        *,
+        file_name: str,
+        backend_phase: PhaseEvaluationResult,
+        frontend_phase: PhaseEvaluationResult,
+        review_summary: Dict[str, Any],
+    ) -> None:
+        lines = [
+            "# Spec Review - %s" % task.id,
+            "",
+            "## Aggregate",
+            "- Status: %s" % review_summary["status"],
+            "- Summary: %s" % review_summary["summary"],
+            "- Next Action: %s" % review_summary["next_action"],
+            "",
+            "## Severity Counts",
+            "- Critical: %s" % review_summary["severity_counts"]["critical"],
+            "- Warning: %s" % review_summary["severity_counts"]["warning"],
+            "- Info: %s" % review_summary["severity_counts"]["info"],
+            "",
+            "## Backend Evaluator",
+            "- Status: %s" % backend_phase.status,
+            "- Summary: %s" % backend_phase.summary,
+            "",
+            "## Frontend Evaluator",
+            "- Status: %s" % frontend_phase.status,
+            "- Summary: %s" % frontend_phase.summary,
+        ]
+        self.store.save_review(task.id, file_name, "\n".join(lines) + "\n")
+
+    def _persist_dual_evaluation_artifacts(
+        self,
+        task: TaskItem,
+        *,
+        backend_phase: PhaseEvaluationResult,
+        frontend_phase: PhaseEvaluationResult,
+        aggregate_phase: PhaseEvaluationResult,
+        review_summary: Dict[str, Any],
+    ) -> None:
+        mode = review_summary["mode"]
+        self.store.save_review(task.id, "backend_evaluator.md", backend_phase.summary + "\n")
+        self.store.save_review(task.id, "frontend_evaluator.md", frontend_phase.summary + "\n")
+        self.store.write_json(
+            self.layout.task_reviews_dir(task.id) / ("%s.json" % mode),
+            {
+                "mode": mode,
+                "task_id": task.id,
+                "aggregate": review_summary,
+            },
+        )
+        self._write_task_review_markdown(
+            task,
+            file_name="%s.md" % mode,
+            backend_phase=backend_phase,
+            frontend_phase=frontend_phase,
+            review_summary=review_summary,
+        )
+        self.store.save_trace(
+            task.id,
+            "backend_evaluator.json",
+            {
+                "status": backend_phase.status,
+                "summary": backend_phase.summary,
+                "findings": [finding.to_dict() for finding in backend_phase.findings],
+                "details": backend_phase.details,
+            },
+        )
+        self.store.save_trace(
+            task.id,
+            "frontend_evaluator.json",
+            {
+                "status": frontend_phase.status,
+                "summary": frontend_phase.summary,
+                "findings": [finding.to_dict() for finding in frontend_phase.findings],
+                "details": frontend_phase.details,
+            },
+        )
+        self.store.save_trace(
+            task.id,
+            "aggregate_evaluator.json",
+            {
+                "status": aggregate_phase.status,
+                "summary": aggregate_phase.summary,
+                "findings": [finding.to_dict() for finding in aggregate_phase.findings],
+                "details": aggregate_phase.details,
+                "review": review_summary,
+            },
+        )
+
+    def _write_final_review(self, payload: Dict[str, Any]) -> None:
+        lines = [
+            "# Final Review",
+            "",
+            "- Status: %s" % payload["status"],
+            "- Summary: %s" % payload["summary"],
+            "- Approved Tasks: %s/%s" % (payload["approved_tasks"], payload["total_tasks"]),
+            "- Next Action: %s" % payload["next_action"],
+        ]
+        self.store.write_json(self.layout.final_review_path, payload)
+        self.store.write_text(self.layout.final_review_markdown_path, "\n".join(lines) + "\n")
+
+    def _build_final_review_payload(self, tasks: List[TaskItem]) -> Dict[str, Any]:
+        task_results = []
+        findings: List[Any] = []
+        verification_commands: List[str] = []
+        approved_tasks = 0
+        failed_tasks: List[str] = []
+        missing_reports: List[str] = []
+
+        for task in tasks:
+            verification_commands.extend(task.verification)
+            try:
+                qa_report = self.store.load_qa_report(task.id)
+            except ArtifactNotFoundError:
+                missing_reports.append(task.id)
+                task_results.append({"task_id": task.id, "status": "missing_qa_report"})
+                continue
+            findings = self._merge_findings(findings, qa_report.findings)
+            task_results.append({"task_id": task.id, "status": qa_report.status})
+            if qa_report.status == "approved":
+                approved_tasks += 1
+            else:
+                failed_tasks.append(task.id)
+
+        status = "approved" if approved_tasks == len(tasks) and not missing_reports and not failed_tasks else "failed"
+        next_action = "openspec-archive-change" if status == "approved" else "rf-spec-review"
+        summary = "all task-level QA gates approved" if status == "approved" else "change-level verification found unresolved tasks"
+
+        payload = {
+            "mode": "spec_review",
+            "scope": "change",
+            "project": self.run_meta.project_name if self.run_meta else "",
+            "status": status,
+            "summary": summary,
+            "approved_tasks": approved_tasks,
+            "total_tasks": len(tasks),
+            "failed_tasks": failed_tasks,
+            "missing_reports": missing_reports,
+            "verification_commands": verification_commands,
+            "commit_count": len(self.run_meta.commit_log) if self.run_meta else 0,
+            "tasks": task_results,
+            "severity_counts": self._severity_counts(findings),
+            "next_action": next_action,
+        }
+        self._write_final_review(payload)
+        return payload
+
+    def run_spec_review(self) -> Dict[str, Any]:
+        self.store.init_workspace()
+        try:
+            self._recover_runtime()
+        except ResumeError:
+            try:
+                self.run_meta = self.store.load_run_state()
+            except ArtifactNotFoundError:
+                return {
+                    "mode": "spec_review",
+                    "status": "failed",
+                    "reason": "review_context_missing",
+                }
+
+        tasks = self._load_tasks()
+        if not tasks:
+            return {
+                "mode": "spec_review",
+                "status": "failed",
+                "reason": "review_context_missing",
+            }
+
+        if all(task.status == "done" for task in tasks):
+            return self._build_final_review_payload(tasks)
+
+        task_id = self.run_meta.current_task_id or next((task.id for task in tasks if task.status == "in_progress"), None)
+        if not task_id:
+            task_id = next((task.id for task in tasks if task.status == "done"), None)
+        if not task_id:
+            return {
+                "mode": "spec_review",
+                "status": "failed",
+                "reason": "task_context_missing",
+            }
+
+        task = self.store.load_task(task_id)
+        contract = self.store.load_contract(task_id)
+        try:
+            qa_report = self.store.load_qa_report(task_id)
+        except ArtifactNotFoundError:
+            return {
+                "mode": "spec_review",
+                "scope": "task",
+                "task_id": task_id,
+                "status": "failed",
+                "reason": "qa_report_missing",
+            }
+
+        backend_eval = self._invoke_phase_adapter(
+            getattr(self.services, "backend_evaluator", None),
+            "backend_evaluator",
+            task,
+            contract,
+            qa_report,
+        )
+        frontend_eval = self._invoke_phase_adapter(
+            getattr(self.services, "frontend_evaluator", None),
+            "frontend_evaluator",
+            task,
+            contract,
+            qa_report,
+        )
+        aggregate_phase = self.aggregate_evaluator.merge(backend_eval, frontend_eval)
+        combined_findings = self._merge_findings(qa_report.findings, aggregate_phase.findings)
+        status = "approved" if qa_report.status == "approved" and aggregate_phase.status == "passed" else "failed"
+        review_summary = self._build_review_summary(
+            mode="spec_review",
+            scope="task",
+            status=status,
+            summary=aggregate_phase.summary if status == "failed" else "independent spec review passed",
+            findings=combined_findings,
+            failure_signature=qa_report.failure_signature or aggregate_phase.details.get("failure_signature"),
+            next_action="rf-spec-impl" if status == "failed" else "openspec-archive-change",
+        )
+        updated_report = QaReport(
+            task_id=qa_report.task_id,
+            status=status,
+            static=qa_report.static,
+            runtime=qa_report.runtime,
+            outcome=qa_report.outcome,
+            findings=combined_findings,
+            failure_signature=qa_report.failure_signature or aggregate_phase.details.get("failure_signature"),
+            confidence_score=1.0 if status == "approved" else 0.35,
+            backend=aggregate_phase.details.get("backend", {}),
+            frontend=aggregate_phase.details.get("frontend", {}),
+            review=review_summary,
+        )
+        self._persist_dual_evaluation_artifacts(
+            task,
+            backend_phase=backend_eval,
+            frontend_phase=frontend_eval,
+            aggregate_phase=aggregate_phase,
+            review_summary=review_summary,
+        )
+        self.store.save_qa_report(task.id, updated_report)
+        payload = {
+            "mode": "spec_review",
+            "scope": "task",
+            "project": self.run_meta.project_name if self.run_meta else "",
+            "task_id": task.id,
+            "status": status,
+            "aggregate": review_summary,
+            "qa_report": updated_report.to_dict(),
+        }
+        self.store.write_json(self.layout.task_reviews_dir(task.id) / "spec_review.json", payload)
+        return payload
 
     def run(self, project: str, request_text: str) -> RunMeta:
         self.store.init_workspace()
@@ -81,7 +397,7 @@ class RailForgeHarness:
     def resume(self, reason: str, note: str) -> RunMeta:
         self.store.init_workspace()
         with self.lock:
-            self.run_meta = self.store.load_run_state()
+            self._recover_runtime()
             if self.run_meta.state != RunState.BLOCKED:
                 raise ResumeError("run is not blocked")
             if not self.run_meta.resume_from_state:
@@ -98,13 +414,13 @@ class RailForgeHarness:
     def execute_current_task(self) -> RunMeta:
         self.store.init_workspace()
         with self.lock:
-            self.run_meta = self.store.load_run_state()
+            self._recover_runtime()
             return self._drive()
 
     def prepare_execution_payload(self, reason: str, note: str) -> Dict[str, Any]:
         self.store.init_workspace()
         with self.lock:
-            self.run_meta = self.store.load_run_state()
+            self._recover_runtime()
             if self.run_meta.state == RunState.BLOCKED and self.run_meta.resume_from_state:
                 self.interrupts.record_unblock(reason=reason, note=note)
                 self.run_meta.state = RunState(self.run_meta.resume_from_state)
@@ -115,20 +431,35 @@ class RailForgeHarness:
             result = self._drive()
             if result.blocked_reason != "hosted_execution_required":
                 raise ResumeError("run is not waiting for hosted execution")
-            return self.store.read_json(self.layout.runtime / "hosted_execution_request.json")
+            payload = self.store.read_json(self.layout.hosted_execution_request_path)
+            task_id = payload.get("task_id") or self.run_meta.current_task_id
+            if task_id:
+                self.store.save_trace(task_id, "hosted_execution_request.json", payload)
+            return payload
 
     def record_execution_result(self, payload: Dict[str, Any]) -> RunMeta:
         self.store.init_workspace()
         with self.lock:
-            self.run_meta = self.store.load_run_state()
+            self._recover_runtime()
             if self.run_meta.blocked_reason != "hosted_execution_required":
                 raise ResumeError("run is not waiting for hosted execution result")
-            self.store.write_json(self.layout.runtime / "hosted_execution_result.json", payload)
+            task_id = self.run_meta.current_task_id or payload.get("task_id")
+            if not task_id:
+                raise ResumeError("hosted execution result missing task id")
+            self.run_meta.current_task_id = task_id
+            self.store.write_json(self.layout.hosted_execution_result_path, payload)
+            self.store.save_trace(task_id, "hosted_execution_result.json", payload)
             self._last_implementation = AdapterResult(
                 success=True,
                 summary=payload["summary"],
                 changed_files=payload.get("changed_files", []),
-                metadata={"mode": "hosted_codex", "recorded": True},
+                metadata={
+                    "mode": "hosted_codex",
+                    "recorded": True,
+                    "runtime_status": "passed",
+                    "runtime_summary": "hosted execution reported verification success",
+                    "verification_notes": payload.get("verification_notes", []),
+                },
             )
             self.run_meta.state = RunState.STATIC_REVIEW
             self.run_meta.blocked_reason = None
@@ -216,9 +547,26 @@ class RailForgeHarness:
         )
         self.run_meta.thread_id = lg_ref["thread_id"]
         self.run_meta.checkpoint_ref = lg_ref["checkpoint_ref"]
-        checkpoint = self.checkpoints.save(self.run_meta, backlog, current_task, langgraph_ref=lg_ref)
+        checkpoint = self.checkpoints.save(
+            self.run_meta,
+            backlog,
+            current_task,
+            langgraph_ref=lg_ref,
+            git_state=self.runtime_recovery.inspect_git_state(),
+        )
         self.run_meta.checkpoint_index = checkpoint.sequence
         self.store.save_run_state(self.run_meta)
+
+    def _recover_runtime(self) -> None:
+        snapshot = self.runtime_recovery.recover()
+        if snapshot.run_meta is None:
+            raise ResumeError(snapshot.failure_reason or "run_state missing")
+        self.run_meta = snapshot.run_meta
+        if snapshot.current_task is not None:
+            self.store.save_task(snapshot.current_task)
+        self.store.save_run_state(self.run_meta)
+        if self.run_meta.state == RunState.FAILED:
+            raise ResumeError(snapshot.failure_reason or "runtime recovery failed")
 
     def _load_tasks(self) -> List[TaskItem]:
         backlog = self._active_backlog()
@@ -387,6 +735,8 @@ class RailForgeHarness:
         self.store.save_review(task.id, "frontend_review.md", frontend_review.summary)
         self.store.save_proposal(task.id, "backend_patch.diff", backend_review.proposed_patch or "")
         self.store.save_proposal(task.id, "frontend_patch.diff", frontend_review.proposed_patch or "")
+        self.store.save_trace(task.id, "backend_specialist.json", backend_review.metadata.get("trace", {}))
+        self.store.save_trace(task.id, "frontend_specialist.json", frontend_review.metadata.get("trace", {}))
         self._last_reviews = [backend_review, frontend_review]
         self._last_static = self.static_evaluator.evaluate(task, contract, self._last_implementation, self._last_reviews)
         if self._last_static.status != "passed":
@@ -418,7 +768,23 @@ class RailForgeHarness:
             backend_eval = self._invoke_phase_adapter(backend_eval_adapter, "backend_evaluator", task, contract, qa)
             frontend_eval = self._invoke_phase_adapter(frontend_eval_adapter, "frontend_evaluator", task, contract, qa)
             aggregate_phase = self.aggregate_evaluator.merge(backend_eval, frontend_eval)
-            combined_findings = list(qa.findings) + list(aggregate_phase.findings)
+            combined_findings = self._merge_findings(qa.findings, aggregate_phase.findings)
+            review_summary = self._build_review_summary(
+                mode="runtime_qa",
+                scope="task",
+                status="approved" if aggregate_phase.status == "passed" and not combined_findings else "failed",
+                summary=aggregate_phase.summary,
+                findings=combined_findings,
+                failure_signature=qa.failure_signature or aggregate_phase.details.get("failure_signature"),
+                next_action="ready_to_commit" if aggregate_phase.status == "passed" and not combined_findings else "repair",
+            )
+            self._persist_dual_evaluation_artifacts(
+                task,
+                backend_phase=backend_eval,
+                frontend_phase=frontend_eval,
+                aggregate_phase=aggregate_phase,
+                review_summary=review_summary,
+            )
             qa = self.qa_manager.build_report(
                 task=task,
                 static_status=self._last_static or PhaseEvaluationResult(status="passed", summary="static review passed"),
@@ -429,6 +795,7 @@ class RailForgeHarness:
             )
             qa.backend = aggregate_phase.details.get("backend", {})
             qa.frontend = aggregate_phase.details.get("frontend", {})
+            qa.review = review_summary
         self.store.save_qa_report(task.id, qa)
         if qa.status == "approved":
             self._transition(RunState.READY_TO_COMMIT)
@@ -505,6 +872,15 @@ class RailForgeHarness:
         selected = select_next_task(tasks)
         self._persist_tasks(tasks, current_task=None, draft=not self.layout.backlog_path.exists())
         if selected is None:
+            final_review = self._build_final_review_payload(tasks)
+            if final_review["status"] != "approved":
+                self._block(
+                    reason="final_review_failed",
+                    resume_from_state=RunState.NEXT_TASK,
+                    note=final_review["summary"],
+                    task_id="CHANGE",
+                )
+                return
             self._transition(RunState.DONE)
             return
         self._transition(RunState.TASK_SELECTED)

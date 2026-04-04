@@ -16,6 +16,11 @@ EXPECTED_SKILLS = {
     "rf-status": "status",
 }
 
+BRIDGE_SKILLS = {
+    "rf-openspec-apply": "openspec-apply-change",
+    "rf-openspec-archive": "openspec-archive-change",
+}
+
 
 def test_skill_entrypoints_exist_and_call_expected_commands() -> None:
     repo_root = Path(__file__).resolve().parents[2]
@@ -42,5 +47,19 @@ def test_skill_entrypoints_exist_and_call_expected_commands() -> None:
         assert script_file.exists()
         assert skill_file.read_text().startswith("---\nname: ")
         assert f"name: {skill_name}" in skill_file.read_text()
-        assert f"python -m railforge {command}" in script_file.read_text()
+        script_text = script_file.read_text()
+        assert f"python3 -m railforge {command}" in script_text
+        assert "python -m railforge" not in script_text
+        assert script_file.stat().st_mode & stat.S_IXUSR
+
+    for skill_name, bridge_name in BRIDGE_SKILLS.items():
+        skill_dir = repo_root / ".agents" / "skills" / skill_name
+        skill_file = skill_dir / "SKILL.md"
+        script_file = skill_dir / "scripts" / "run.sh"
+
+        assert skill_file.exists()
+        assert script_file.exists()
+        assert f"name: {skill_name}" in skill_file.read_text()
+        assert bridge_name in skill_file.read_text()
+        assert bridge_name in script_file.read_text()
         assert script_file.stat().st_mode & stat.S_IXUSR

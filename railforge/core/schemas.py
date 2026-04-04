@@ -79,15 +79,30 @@ def render_product_spec_markdown(spec: ProductSpec) -> str:
 
 
 def render_contract_markdown(contract: ContractSpec) -> str:
+    context = contract.task_context or ["无"]
+    writeback = contract.writeback_requirements or {}
+    required_fields = writeback.get("required_fields", []) or ["无"]
+    role_lines = []
+    for role, boundary in contract.role_boundaries.items():
+        marker = "只读" if boundary.get("read_only") else "可写"
+        allowed = boundary.get("allowed_paths", [])
+        role_lines.append("- %s: %s" % (role, marker))
+        role_lines.extend("  - %s" % item for item in allowed or ["无"])
     return (
         "# Contract - %s\n\n## Scope\n%s\n\n## Non-Scope\n%s\n\n## Allowed Paths\n%s\n\n"
-        "## Verification\n%s\n\n## Rollback\n%s\n"
+        "## Verification\n%s\n\n## Done Definition\n%s\n\n## Task Context\n%s\n\n"
+        "## Writeback\n- result_path: %s\n- required_fields:\n%s\n\n## Role Boundaries\n%s\n\n## Rollback\n%s\n"
         % (
             contract.task_id,
             "\n".join("- %s" % item for item in contract.scope),
             "\n".join("- %s" % item for item in contract.non_scope),
             "\n".join("- %s" % item for item in contract.allowed_paths),
             "\n".join("- %s" % item for item in contract.verification),
+            "\n".join("- %s" % item for item in contract.done_definition),
+            "\n".join("- %s" % item for item in context),
+            writeback.get("result_path", "无"),
+            "\n".join("- %s" % item for item in required_fields),
+            "\n".join(role_lines or ["- 无"]),
             "\n".join("- %s" % item for item in contract.rollback),
         )
     )

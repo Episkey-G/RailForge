@@ -4,4 +4,4 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../../" && pwd)"
 cd "$ROOT"
 
-exec python -m railforge resume "$@"
+exec python3 -m railforge resume "$@"

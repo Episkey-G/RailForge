@@ -3,6 +3,7 @@ import sys
 from pathlib import Path
 
 import yaml
+import json
 
 
 def test_full_codex_first_workflow_blocks_for_spec_then_executes(tmp_path: Path) -> None:
@@ -84,4 +85,8 @@ def test_full_codex_first_workflow_blocks_for_spec_then_executes(tmp_path: Path)
     assert executed.returncode == 0
     assert executed.stdout.strip().endswith("DONE")
     backlog = yaml.safe_load((workspace / ".railforge" / "planning" / "backlog.yaml").read_text(encoding="utf-8"))
+    final_review = json.loads((workspace / ".railforge" / "execution" / "final_review.json").read_text(encoding="utf-8"))
     assert all(item["status"] == "done" for item in backlog["items"])
+    assert final_review["scope"] == "change"
+    assert final_review["status"] == "approved"
+    assert final_review["approved_tasks"] == len(backlog["items"])

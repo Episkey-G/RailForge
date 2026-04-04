@@ -29,6 +29,23 @@ def test_installer_init_scaffolds_project_files(tmp_path: Path) -> None:
     assert (target / "AGENTS.md").exists()
 
 
+def test_installer_init_scaffolds_openspec_bridge_entries(tmp_path: Path) -> None:
+    target = tmp_path / "demo"
+
+    result = subprocess.run(
+        ["node", str(INSTALLER), "init", "--target", str(target)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0
+    assert (target / ".agents" / "skills" / "rf-openspec-apply" / "SKILL.md").exists()
+    assert (target / ".agents" / "skills" / "rf-openspec-archive" / "SKILL.md").exists()
+    assert (target / ".claude" / "commands" / "rf" / "openspec-apply.md").exists()
+    assert (target / ".claude" / "commands" / "rf" / "openspec-archive.md").exists()
+
+
 def test_installer_uninstall_removes_scaffolded_files(tmp_path: Path) -> None:
     target = tmp_path / "demo"
     subprocess.run(
@@ -67,6 +84,11 @@ def test_installer_config_mcp_writes_catalog(tmp_path: Path) -> None:
     payload = json.loads(result.stdout)
     assert payload["action"] == "config-mcp"
     assert (target / ".mcp.json").exists()
+    codex_config = (target / ".codex" / "config.toml").read_text(encoding="utf-8")
+    assert 'model_reasoning_effort = "high"' in codex_config
+    assert 'sandbox_mode = "workspace-write"' in codex_config
+    assert "[mcp_servers.Context7]" in codex_config
+    assert "startup_timeout_sec = 30" in codex_config
 
 
 def test_installer_help_lists_core_commands() -> None:
@@ -152,6 +174,6 @@ def test_installer_probe_mcp_reports_configured_and_synced_files(tmp_path: Path)
     assert result.returncode == 0
     payload = json.loads(result.stdout)
     assert payload["action"] == "probe-mcp"
-    assert "context7" in payload["configured"]
+    assert "Context7" in payload["configured"]
     assert str(target / ".codex" / "config.toml") in payload["mirrors"]
     assert str(target / ".gemini" / "settings.json") in payload["mirrors"]

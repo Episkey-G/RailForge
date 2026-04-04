@@ -4,10 +4,13 @@
 
 | Test | What it checks |
 | --- | --- |
+| `tests/integration/test_alignment_baseline_docs.py` | 第 1 组基线文档已经落地，明确记录 CCG 对齐矩阵、持久化/恢复基线与已验证缺口。 |
+| `tests/integration/test_spec_command_baselines.py` | `spec-research / spec-plan / spec-review` 的 research/plan 富化行为、规划期 contract 落盘和 unresolved question 阻塞语义有稳定回归覆盖。 |
 | `tests/integration/test_skill_entrypoints.py` | Skill directories exist, `run.sh` files are executable, README points to the formal docs path, and the formal repository no longer keeps `docs/superpowers/`. |
 | `tests/integration/test_module_entry.py` | The `python -m railforge` module entrypoint still works for the runtime CLI. |
 | `tests/integration/test_codeagent_cli.py` | `python -m railforge.codeagent` 的 `run / probe` 入口能输出稳定 JSON。 |
 | `tests/integration/test_prepare_record_execution.py` | `prepare-execution / record-execution` 的 hosted Codex 协议能生成上下文并回写执行结果。 |
+| `tests/integration/test_spec_review_flow.py` | 从 `spec-init` 到 `spec-review` 的 hosted smoke 流程可跨进程完成初始化、规划、Hosted Codex 握手和 change 级最终审查。 |
 | `tests/integration/test_skill_hosted_protocol.py` | `rf-execute / rf-review / rf-resume` 的 skill 文档已经切到 hosted 协议。 |
 | `tests/integration/test_docs_guides.py` | 命令手册与 FAQ 已生成并覆盖主工作流与常见问题。 |
 | `tests/integration/test_run_loop.py` | The harness run and resume flow still reaches the expected terminal states. |

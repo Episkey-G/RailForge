@@ -6,15 +6,19 @@ from typing import Any, Optional
 
 import yaml
 
-from railforge.adapters.mock import build_default_mock_services, build_repeated_failure_services
+from railforge.adapters.mock import build_default_mock_services, build_hosted_smoke_services, build_repeated_failure_services
 from railforge.artifacts.store import ArtifactStore
 from railforge.core.errors import ArtifactNotFoundError
-from railforge.core.models import WorkspaceLayout
+from railforge.core.models import TaskItem, WorkspaceLayout
 from railforge.openspec_bridge import OpenSpecBridge
 from railforge.orchestrator.run_loop import RailForgeHarness
+from railforge.planner.change_renderer import render_design, render_proposal, render_spec, render_tasks
+from railforge.planner.contract_builder import build_contract
 
 
 def build_services(profile: str, scenario: str, workspace: Path) -> Any:
+    if scenario == "hosted-smoke":
+        return build_hosted_smoke_services()
     if profile == "real":
         try:
             from railforge.adapters.base import HarnessServices
@@ -61,19 +65,49 @@ def _prepare_resume_services(args, workspace: Path, allow_recovery: bool = False
     return services
 
 
+def _load_product_spec(store: ArtifactStore):
+    try:
+        return store.load_product_spec()
+    except ArtifactNotFoundError:
+        return store.load_product_spec(draft=True)
+
+
+def _load_questions(store: ArtifactStore) -> dict[str, Any]:
+    try:
+        return store.load_questions()
+    except ArtifactNotFoundError:
+        return {"questions": [], "unresolved": []}
+
+
+def _load_decisions(store: ArtifactStore) -> dict[str, Any]:
+    try:
+        return store.load_decisions()
+    except ArtifactNotFoundError:
+        return {"decisions": []}
+
+
+def _has_unresolved_questions(store: ArtifactStore) -> bool:
+    return bool(_load_questions(store).get("unresolved", []))
+
+
 def handle_spec_research(args) -> int:
     workspace = Path(args.workspace)
     services = build_services(args.profile, args.scenario, workspace)
     harness = RailForgeHarness(workspace=workspace, services=services)
+    store = ArtifactStore(WorkspaceLayout(workspace))
     project = args.project or workspace.name
     result = harness.run(project=project, request_text=args.request)
     bridge = OpenSpecBridge(workspace)
     bridge.write_proposal(
         project,
-        "# Proposal\n\n"
-        f"- Change: {project}\n"
-        f"- Request: {args.request}\n"
-        f"- Result State: {result.state.value}\n",
+        render_proposal(
+            change_id=project,
+            request_text=args.request,
+            spec=_load_product_spec(store),
+            questions=_load_questions(store).get("unresolved") or _load_questions(store).get("questions", []),
+            decisions=_load_decisions(store).get("decisions", []),
+            result_state=result.state.value,
+        ),
     )
     print(result.state.value)
     return 0
@@ -150,34 +184,39 @@ def handle_resume(args) -> int:
 def handle_spec_plan(args) -> int:
     workspace = Path(args.workspace)
     store = ArtifactStore(WorkspaceLayout(workspace))
+    if _has_unresolved_questions(store):
+        print("BLOCKED")
+        return 0
     if not store.has_approval("spec"):
+        print("BLOCKED")
+        return 0
+    try:
+        spec = store.load_product_spec()
+    except ArtifactNotFoundError:
         print("BLOCKED")
         return 0
     services = _prepare_resume_services(args, workspace)
     harness = RailForgeHarness(workspace=workspace, services=services)
     result = harness.resume(reason=args.reason or "spec_plan", note=args.note or "continue to backlog planning")
+    if result.blocked_reason in {"clarification_required", "spec_approval_required"}:
+        print(result.state.value)
+        return 0
     run_state = store.load_run_state()
     project = run_state.project_name or workspace.name
     bridge = OpenSpecBridge(workspace)
-    spec = store.load_product_spec()
-    backlog = store.load_backlog(draft=not WorkspaceLayout(workspace).backlog_path.exists())
-    bridge.write_design(
-        project,
-        "# Design\n\n"
-        f"## Summary\n{spec.summary}\n\n"
-        "## Acceptance Criteria\n"
-        + "\n".join(f"- {item}" for item in spec.acceptance_criteria),
-    )
-    bridge.write_tasks(
-        project,
-        "\n".join(f"- [ ] {item['id']} {item['title']}" for item in backlog.get("items", [])),
-    )
+    questions = _load_questions(store)
+    decisions = _load_decisions(store)
+    layout = WorkspaceLayout(workspace)
+    backlog = store.load_backlog(draft=not layout.backlog_path.exists())
+    tasks = [TaskItem.from_dict(item) for item in backlog.get("items", [])]
+    for task in tasks:
+        store.save_contract(build_contract(task))
+    bridge.write_design(project, render_design(spec, tasks, decisions.get("decisions", [])))
+    bridge.write_tasks(project, render_tasks(tasks))
     bridge.write_spec(
         project,
         "harness-core",
-        "# Spec\n\n"
-        "## Constraints\n"
-        + "\n".join(f"- {item}" for item in spec.constraints),
+        render_spec(spec, tasks, questions.get("unresolved", []), decisions.get("decisions", [])),
     )
     print(result.state.value)
     return 0
@@ -243,4 +282,9 @@ def handle_review(args) -> int:
 
 
 def handle_spec_review(args) -> int:
-    return handle_review(args)
+    workspace = Path(args.workspace)
+    services = _prepare_resume_services(args, workspace, allow_recovery=True)
+    harness = RailForgeHarness(workspace=workspace, services=services)
+    payload = harness.run_spec_review()
+    print(json.dumps(payload, indent=2, ensure_ascii=False))
+    return 0

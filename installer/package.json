@@ -1,6 +1,6 @@
 {
   "name": "railforge-workflow",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "RailForge spec workflow installer",
   "type": "module",
   "license": "MIT",
@@ -31,6 +31,9 @@
     "bin/railforge.mjs",
     "src"
   ],
+  "dependencies": {
+    "inquirer": "^12.9.6"
+  },
   "scripts": {
     "doctor": "node ./bin/railforge.mjs doctor",
     "help": "node ./bin/railforge.mjs help"

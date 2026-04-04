@@ -57,6 +57,16 @@ class GitAdapter:
     def create_commit(self, workspace: Path, message: str, files: Iterable[str]) -> CommitGateResult:
         raise NotImplementedError
 
+    def inspect_workspace(self, workspace: Path) -> Dict[str, Any]:
+        return {
+            "available": False,
+            "dirty": False,
+            "head": None,
+            "branch": None,
+            "status": [],
+            "reason": "inspect_workspace_not_implemented",
+        }
+
 
 class ShellAdapter:
     def run(self, workspace: Path, commands: List[str]):

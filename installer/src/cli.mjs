@@ -4,7 +4,7 @@ import process from 'node:process'
 import readline from 'node:readline/promises'
 
 import { initProject, probeMcpConfig, uninstallProject, updateProject, writeMcpConfig, writeModelConfig } from './commands.mjs'
-import { renderMainMenu } from './menu.mjs'
+import { mainMenuChoices, mcpMenuChoices, modelMenuChoices, renderHeader } from './menu.mjs'
 import { MCP_GROUPS } from './mcp.mjs'
 
 function detectBinary(name) {
@@ -29,6 +29,11 @@ function doctorPayload() {
   }
 }
 
+function installState(target) {
+  const modelsPath = path.join(target, '.railforge', 'runtime', 'models.yaml')
+  return fs.existsSync(modelsPath)
+}
+
 function optionValue(argv, flag, fallback = null) {
   const index = argv.indexOf(flag)
   if (index === -1 || index + 1 >= argv.length) {
@@ -37,65 +42,183 @@ function optionValue(argv, flag, fallback = null) {
   return argv[index + 1]
 }
 
+async function getPromptEngine() {
+  try {
+    const module = await import('inquirer')
+    return module.default
+  }
+  catch {
+    return null
+  }
+}
+
 async function runMenu() {
   if (!process.stdout.isTTY || !process.stdin.isTTY) {
-    console.log(renderMainMenu())
+    console.log(renderHeader())
     return
   }
 
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout
-  })
-  console.log(renderMainMenu())
-  const answer = await rl.question('\n选择操作编号: ')
-  rl.close()
-  if (answer === '1') {
-    console.log(JSON.stringify(await initProject(process.cwd()), null, 2))
+  const inquirer = await getPromptEngine()
+
+  while (true) {
+    console.log(renderHeader())
+    let action
+    if (inquirer) {
+      const answer = await inquirer.prompt([
+        {
+          type: 'list',
+          name: 'action',
+          message: '? RailForge 主菜单',
+          choices: mainMenuChoices(),
+        },
+      ])
+      action = answer.action
+    }
+    else {
+      const rl = readline.createInterface({
+        input: process.stdin,
+        output: process.stdout,
+      })
+      console.log(mainMenuChoices().map((item) => item.name).join('\n'))
+      const answer = await rl.question('\n选择操作编号或字母: ')
+      await rl.close()
+      const normalized = answer.trim().toUpperCase()
+      const fallbackMap = {
+        '1': 'init',
+        '2': 'update',
+        '3': 'config-mcp',
+        '4': 'config-model',
+        '5': 'tools',
+        'T': 'tools',
+        'C': 'check-cli',
+        'H': 'help',
+        '-': 'uninstall',
+        '6': 'uninstall',
+        'Q': 'quit',
+      }
+      action = fallbackMap[normalized] || 'invalid'
+    }
+
+    if (action === 'init') {
+      console.log(JSON.stringify(await initProject(process.cwd()), null, 2))
+    }
+    else if (action === 'update') {
+      if (!installState(process.cwd())) {
+        console.log(JSON.stringify({ action: 'update', status: 'not-installed', suggestion: '先执行初始化 RailForge 配置' }, null, 2))
+      }
+      else {
+        console.log(JSON.stringify(await updateProject(process.cwd()), null, 2))
+      }
+    }
+    else if (action === 'config-mcp') {
+      await runMcpMenu(process.cwd())
+    }
+    else if (action === 'config-model') {
+      await runModelMenu(process.cwd())
+    }
+    else if (action === 'tools' || action === 'check-cli') {
+      console.log(JSON.stringify(doctorPayload(), null, 2))
+    }
+    else if (action === 'help') {
+      console.log(
+        [
+          'RailForge 命令帮助',
+          '',
+          '/rf:spec-init',
+          '/rf:spec-research',
+          '/rf:spec-plan',
+          '/rf:spec-impl',
+          '/rf:spec-review',
+          '/rf:openspec-apply',
+          '/rf:openspec-archive',
+          '',
+          '常见问题请查看 docs/guide/faq.md',
+          '更多信息请查看 README.md 和 docs/architecture/best-practices.md',
+        ].join('\n'),
+      )
+    }
+    else if (action === 'uninstall') {
+      console.log(JSON.stringify(await uninstallProject(process.cwd()), null, 2))
+    }
+    else if (action === 'quit') {
+      console.log('已退出')
+      return
+    }
+
+    if (inquirer) {
+      await inquirer.prompt([
+        {
+          type: 'input',
+          name: 'continue',
+          message: '按 Enter 返回主菜单...',
+        },
+      ])
+    }
+  }
+}
+
+async function runMcpMenu(target) {
+  const inquirer = await getPromptEngine()
+  let action
+  if (inquirer) {
+    const answer = await inquirer.prompt([
+      {
+        type: 'list',
+        name: 'action',
+        message: '? 配置 MCP',
+        choices: mcpMenuChoices(),
+      },
+    ])
+    action = answer.action
+  }
+  else {
+    action = 'write-config'
+  }
+  if (action === 'back') {
     return
   }
-  if (answer === '2') {
-    console.log(JSON.stringify(await updateProject(process.cwd()), null, 2))
+  if (action === 'write-config' || action === 'code-retrieval' || action === 'web-search' || action === 'auxiliary') {
+    console.log(JSON.stringify(await writeMcpConfig(target), null, 2))
     return
   }
-  if (answer === '3' || answer.toUpperCase() === 'C') {
-    console.log(JSON.stringify(await writeMcpConfig(process.cwd()), null, 2))
+  if (action === 'probe') {
+    console.log(JSON.stringify(await probeMcpConfig(target), null, 2))
+  }
+}
+
+async function runModelMenu(target) {
+  const inquirer = await getPromptEngine()
+  let leadWriter
+  if (inquirer) {
+    const answer = await inquirer.prompt([
+      {
+        type: 'list',
+        name: 'leadWriter',
+        message: '? 配置模型路由',
+        choices: modelMenuChoices(),
+      },
+    ])
+    leadWriter = answer.leadWriter
+  }
+  else {
+    leadWriter = 'hosted_codex'
+  }
+  if (leadWriter === 'back') {
     return
   }
-  if (answer === '4') {
-    console.log(JSON.stringify(await writeModelConfig(process.cwd()), null, 2))
-    return
-  }
-  if (answer === '5' || answer.toUpperCase() === 'T') {
-    console.log(JSON.stringify(doctorPayload(), null, 2))
-    return
-  }
-  if (answer === '6' || answer === '-') {
-    console.log(JSON.stringify(await uninstallProject(process.cwd()), null, 2))
-    return
-  }
-  if (answer.toUpperCase() === 'H') {
-    console.log(
-      [
-        'RailForge 命令帮助',
-        '',
-        '/rf:spec-init',
-        '/rf:spec-research',
-        '/rf:spec-plan',
-        '/rf:spec-impl',
-        '/rf:spec-review',
-        '',
-        '常见问题请查看 docs/guide/faq.md',
-        '更多信息请查看 README.md 和 docs/architecture/best-practices.md',
-      ].join('\n'),
-    )
-    return
-  }
-  if (answer.toUpperCase() === 'Q') {
-    console.log('已退出')
-    return
-  }
-  console.log(`已选择: ${answer || '未输入'}`)
+  console.log(
+    JSON.stringify(
+      await writeModelConfig(target, {
+        leadWriter,
+        backendSpecialist: 'claude_cli',
+        frontendSpecialist: 'gemini_cli',
+        backendEvaluator: 'claude_cli',
+        frontendEvaluator: 'gemini_cli',
+      }),
+      null,
+      2,
+    ),
+  )
 }
 
 export async function main(argv = []) {
@@ -171,6 +294,8 @@ export async function main(argv = []) {
         '  /rf:spec-plan',
         '  /rf:spec-impl',
         '  /rf:spec-review',
+        '  /rf:openspec-apply',
+        '  /rf:openspec-archive',
       ].join('\n'),
     )
     return

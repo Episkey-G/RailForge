@@ -26,6 +26,12 @@ class ContractGate:
             errors.append("missing_rollback")
         if not contract.done_definition:
             errors.append("missing_done_definition")
+        if not contract.task_context:
+            errors.append("missing_task_context")
+        if not contract.writeback_requirements.get("required_fields"):
+            errors.append("missing_writeback_requirements")
+        if "lead_writer" not in contract.role_boundaries:
+            errors.append("missing_lead_writer_boundary")
 
         unknown_paths = [path for path in contract.allowed_paths if path not in task.allowed_paths]
         if unknown_paths:

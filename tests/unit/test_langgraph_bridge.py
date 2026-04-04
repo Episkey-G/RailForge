@@ -31,3 +31,40 @@ def test_file_checkpoint_store_persists_langgraph_refs(tmp_path: Path) -> None:
     latest = store.load_latest()
     assert latest["langgraph"]["thread_id"] == "t-1"
     assert latest["langgraph"]["checkpoint_ref"] == "c-1"
+
+
+def test_langgraph_bridge_restores_latest_ref_from_disk(tmp_path: Path) -> None:
+    layout = WorkspaceLayout(tmp_path)
+    layout.ensure()
+    bridge = LangGraphBridge(layout)
+
+    ref = bridge.record(run_id="run-1", state="SPEC_EXPANSION", payload={"items": []})
+
+    restored = LangGraphBridge(layout).load_latest(run_id="run-1")
+
+    assert restored == ref
+
+
+def test_file_checkpoint_store_persists_resume_and_git_truth(tmp_path: Path) -> None:
+    layout = WorkspaceLayout(tmp_path)
+    layout.ensure()
+    store = FileCheckpointStore(layout)
+    run = RunMeta(
+        run_id="run-1",
+        state=RunState.BLOCKED,
+        blocked_reason="hosted_execution_required",
+        resume_from_state="IMPLEMENTING",
+    )
+
+    store.save(
+        run_meta=run,
+        backlog={"items": []},
+        current_task=None,
+        langgraph_ref={"thread_id": "t-1", "checkpoint_ref": "c-1"},
+        git_state={"available": False, "dirty": False, "head": None, "branch": None, "status": []},
+    )
+
+    latest = store.load_latest()
+    assert latest["resume"]["blocked_reason"] == "hosted_execution_required"
+    assert latest["resume"]["resume_from_state"] == "IMPLEMENTING"
+    assert latest["git"]["available"] is False

@@ -14,7 +14,7 @@ def test_spec_expander_extracts_acceptance_criteria() -> None:
     assert "前端需要显示明确错误提示" in spec.acceptance_criteria
 
 
-def test_backlog_builder_creates_three_tasks() -> None:
+def test_backlog_builder_collapses_umbrella_requirement_when_specific_items_exist() -> None:
     spec = expand_request(
         project="todo-app",
         request_text="用户不能创建过去日期的待办事项。后端接口必须拒绝过去日期。前端需要显示明确错误提示。需要补齐测试。",
@@ -22,6 +22,26 @@ def test_backlog_builder_creates_three_tasks() -> None:
     tasks = build_backlog(spec)
     assert len(tasks) == 3
     assert tasks[0].status == "ready"
+    assert tasks[1].depends_on == ["T-001"]
+    assert tasks[2].depends_on == ["T-001", "T-002"]
+
+
+def test_backlog_builder_derives_tasks_from_acceptance_criteria() -> None:
+    spec = expand_request(project="todo-app", request_text="后端校验、前端提示、测试覆盖")
+
+    tasks = build_backlog(spec)
+
+    assert [task.title for task in tasks] == [
+        "实现后端能力：后端校验",
+        "实现前端能力：前端提示",
+        "补齐验证：测试覆盖",
+    ]
+    assert tasks[0].allowed_paths == ["backend/", "tests/"]
+    assert tasks[1].allowed_paths == ["frontend/", "tests/"]
+    assert tasks[2].allowed_paths == ["tests/", ".railforge/tasks/"]
+    assert tasks[0].verification == ["pytest tests/test_backend_flow.py"]
+    assert tasks[1].verification == ["pytest tests/test_frontend_flow.py", "playwright ui-review.spec.ts"]
+    assert tasks[2].verification == ["pytest tests/test_regression.py"]
     assert tasks[1].depends_on == ["T-001"]
     assert tasks[2].depends_on == ["T-001", "T-002"]
 

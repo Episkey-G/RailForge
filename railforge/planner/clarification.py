@@ -21,7 +21,7 @@ class ClarificationOutcome:
 
 
 def _split_segments(request_text: str) -> List[str]:
-    segments = [item.strip() for item in re.split(r"[。！？!?\.]+", request_text) if item.strip()]
+    segments = [item.strip() for item in re.split(r"[。！？!?\\.,，、；;\n]+", request_text) if item.strip()]
     if not segments:
         return [request_text.strip() or "待补充需求"]
     return segments

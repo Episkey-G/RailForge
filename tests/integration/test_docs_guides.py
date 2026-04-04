@@ -12,6 +12,9 @@ def test_commands_guide_exists_and_lists_spec_workflow() -> None:
     assert "/rf:spec-plan" in text
     assert "/rf:spec-impl" in text
     assert "/rf:spec-review" in text
+    assert "/rf:openspec-apply" in text
+    assert "/rf:openspec-archive" in text
+    assert "final_review.json" in text
 
 
 def test_faq_guide_exists_and_covers_common_questions() -> None:

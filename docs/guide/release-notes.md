@@ -3,7 +3,7 @@
 ## 版本
 
 - RailForge Python core: `0.1.0`
-- `railforge-workflow` installer: `0.1.0`
+- `railforge-workflow` installer: `0.1.1`
 
 ## 本次发布内容
 
@@ -32,6 +32,8 @@
 - `/rf:spec-plan`
 - `/rf:spec-impl`
 - `/rf:spec-review`
+- `/rf:openspec-apply`
+- `/rf:openspec-archive`
 
 ### 2. Hosted Codex 默认执行路径
 
@@ -43,6 +45,8 @@
 
 - OpenSpec 负责 proposal / design / tasks / spec
 - `.railforge/` 负责 runtime state / backlog / approvals / qa / checkpoints
+- `spec-review` 会把主动双模型审查回写到 task 级 `qa_report.json`
+- backlog 完成后会生成 change 级 `.railforge/execution/final_review.json`
 
 ### 4. 安装器
 
@@ -68,11 +72,11 @@
 
 ## 测试结果
 
-- `python -m pytest -q`: `100 passed`
+- `python -m pytest -q`: `119 passed`
 - `railforge.codeagent probe --backend codex|claude|gemini`: 已验证
 - installer `doctor/update/config-model/config-mcp/probe-mcp/help/uninstall`: 已验证
 
 ## 当前边界
 
-- `railforge-workflow` 已具备可发布 npm 包的基本元数据，但尚未验证真实 npm 发布成功
+- `railforge-workflow` 已完成 `0.1.1` 发布前验证，等待或已执行 npm 发布
 - 安装器已经可用，但与 CCG 的完整菜单深度和跨宿主自动化相比仍有继续迭代空间

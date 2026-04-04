@@ -25,7 +25,7 @@ CommandHandler = Callable[[argparse.Namespace], int]
 
 def _add_profile_and_scenario(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--profile", choices=["mock", "real"], default="mock")
-    parser.add_argument("--scenario", choices=["default", "repeated-failure"], default="default")
+    parser.add_argument("--scenario", choices=["default", "repeated-failure", "hosted-smoke"], default="default")
 
 
 def build_parser() -> argparse.ArgumentParser:

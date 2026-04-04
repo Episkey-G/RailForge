@@ -17,6 +17,11 @@ RailForge 是一个以 Spec 驱动的代理编排项目，工作流优先围绕 
 4. `rf-spec-impl` 或 `/rf:spec-impl`
 5. `rf-spec-review` 或 `/rf:spec-review`
 
+当主工作流进入 OpenSpec 生命周期动作时，使用桥接入口：
+
+- `rf-openspec-apply` 或 `/rf:openspec-apply`
+- `rf-openspec-archive` 或 `/rf:openspec-archive`
+
 只有在调试、恢复或排查工作流状态时，才直接使用底层 Python CLI。
 
 ## HITL 规划阶段
@@ -30,6 +35,7 @@ RailForge 是一个以 Spec 驱动的代理编排项目，工作流优先围绕 
 - Python 内核通过 `prepare-execution / record-execution` 与当前 Codex 主会话协作。
 - `railforge.codeagent` 主要负责 `Claude / Gemini`，以及 `Codex` 的 fallback/headless 路径。
 - 对普通用户来说，这些低层协议应由 `rf-spec-impl` 或 `/rf:spec-impl` 隐藏起来，不应成为主要操作入口。
+- `spec-review` 会主动汇总独立双模型评估，并在全部 task 完成后写入 `.railforge/execution/final_review.json`。
 
 ## 安装
 

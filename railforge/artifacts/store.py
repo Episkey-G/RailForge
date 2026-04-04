@@ -82,6 +82,9 @@ class ArtifactStore:
     def save_proposal(self, task_id: str, name: str, content: str) -> None:
         self.writer.write_proposal(task_id, name, content)
 
+    def save_trace(self, task_id: str, name: str, payload: Dict[str, Any]) -> None:
+        self.writer.write_trace(task_id, name, payload)
+
     def save_unblock_decision(self, reason: str, note: str) -> None:
         self.writer.write_unblock_decision(reason, note)
 

@@ -133,6 +133,40 @@ description: Use when an implementation or active change needs an independent du
 3. 触发 Python review gate
 4. 汇总 Claude 和 Gemini 发现
 `,
+  'rf-openspec-apply': `---
+name: rf-openspec-apply
+description: Use when an approved RailForge change should hand off to the OpenSpec implementation lifecycle and continue through pending tasks.
+---
+
+# RF OpenSpec Apply
+
+- 这是 RailForge 到 OpenSpec 生命周期的桥接入口。
+- 进入条件：\`spec-review\` 已给出明确结论，且当前 change 需要继续推进剩余实现任务。
+- 调用目标：\`openspec-apply-change\`
+
+## Steps
+
+1. 确认当前 change 名称
+2. 调用 \`openspec-apply-change\`
+3. 完成后回到 \`rf-spec-review\` 或发布说明收口
+`,
+  'rf-openspec-archive': `---
+name: rf-openspec-archive
+description: Use when a RailForge change has passed its final review gate and should be archived through the OpenSpec lifecycle.
+---
+
+# RF OpenSpec Archive
+
+- 这是 RailForge 到 OpenSpec 生命周期的归档桥接入口。
+- 进入条件：change 级 \`final_review.json\` 已批准，且没有待处理 blocker。
+- 调用目标：\`openspec-archive-change\`
+
+## Steps
+
+1. 确认 final review 通过
+2. 调用 \`openspec-archive-change\`
+3. 记录 release notes 或对照文档
+`,
   'rf-resume': `---
 name: rf-resume
 description: Codex CLI-first skill for resuming a blocked or paused RailForge workflow.
@@ -207,6 +241,28 @@ const COMMAND_TEMPLATES = {
 - Warning
 - Info
 `,
+  'openspec-apply.md': `# /rf:openspec-apply
+
+将当前 RailForge change 桥接到 OpenSpec 生命周期继续实施。
+
+## Bridge Target
+- openspec-apply-change
+
+## Preconditions
+- 已有批准后的 planning / review 结论
+- 当前 change 仍有待完成任务
+`,
+  'openspec-archive.md': `# /rf:openspec-archive
+
+在 RailForge 最终评审通过后桥接到 OpenSpec 归档动作。
+
+## Bridge Target
+- openspec-archive-change
+
+## Preconditions
+- final_review.json 已批准
+- 当前 change 没有 blocker
+`,
   'resume.md': `# /rf:resume\n\nUse the \`rf-resume\` skill to continue a blocked workflow.\n`,
   'status.md': `# /rf:status\n\nUse the \`rf-status\` skill to inspect the current RailForge state.\n`
 }
@@ -220,6 +276,9 @@ const DEFAULT_AGENTS_MD = `# RailForge 工作约定
   - rf-spec-plan
   - rf-spec-impl
   - rf-spec-review
+- OpenSpec 生命周期桥接：
+  - rf-openspec-apply
+  - rf-openspec-archive
 - 默认 lead writer 路径是 hosted_codex。
 `
 
@@ -261,9 +320,10 @@ guardrails:
 function defaultMcpConfig() {
   return {
     mcpServers: {
-      context7: {
+      Context7: {
         command: 'npx',
-        args: ['-y', '@upstash/context7-mcp@latest']
+        args: ['-y', '@upstash/context7-mcp@latest'],
+        startup_timeout_sec: 30,
       },
       Playwright: {
         command: 'npx',
@@ -280,12 +340,18 @@ function defaultMcpConfig() {
 
 function renderCodexToml(mcpConfig) {
   const servers = mcpConfig.mcpServers || {}
-  const lines = []
+  const lines = ['model_reasoning_effort = "high"', 'sandbox_mode = "workspace-write"', '']
   for (const [id, config] of Object.entries(servers)) {
     lines.push(`[mcp_servers.${id}]`)
     lines.push(`command = "${config.command}"`)
     if (config.args?.length) {
       lines.push(`args = [${config.args.map((item) => `"${item}"`).join(', ')}]`)
+    }
+    if (config.startup_timeout_sec) {
+      lines.push(`startup_timeout_sec = ${config.startup_timeout_sec}`)
+    }
+    if (config.tool_timeout_sec) {
+      lines.push(`tool_timeout_sec = ${config.tool_timeout_sec}`)
     }
     lines.push('')
   }
@@ -386,7 +452,15 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "\${BASH_SOURCE[0]}")/../../../../" && pwd)"
 cd "$ROOT"
 
-exec python -m railforge ${command} "$@"
+exec python3 -m railforge ${command} "$@"
+`
+}
+
+function bridgeScriptFor(skillName, bridgeName) {
+  return `#!/usr/bin/env bash
+set -euo pipefail
+
+echo "${skillName} bridges to ${bridgeName}. Invoke that skill from Codex CLI."
 `
 }
 
@@ -414,12 +488,18 @@ export async function initProject(targetDir) {
     'rf-resume': 'resume',
     'rf-status': 'status'
   }
+  const bridgeSkills = {
+    'rf-openspec-apply': 'openspec-apply-change',
+    'rf-openspec-archive': 'openspec-archive-change',
+  }
 
   for (const [skillName, content] of Object.entries(SKILL_CONTENT)) {
     await writeFile(path.join(target, '.agents', 'skills', skillName, 'SKILL.md'), content, installedFiles)
     await writeExecutable(
       path.join(target, '.agents', 'skills', skillName, 'scripts', 'run.sh'),
-      runScriptFor(skillCommands[skillName]),
+      bridgeSkills[skillName]
+        ? bridgeScriptFor(skillName, bridgeSkills[skillName])
+        : runScriptFor(skillCommands[skillName]),
       installedFiles
     )
   }

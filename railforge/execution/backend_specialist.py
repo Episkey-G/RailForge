@@ -19,6 +19,29 @@ def _coerce_result(result: Any) -> AdapterResult:
     raise TypeError("unsupported adapter result: %r" % (result,))
 
 
+def _annotate_result(result: AdapterResult, role: str, writable_paths: list[str]) -> AdapterResult:
+    attempted_writes = list(result.changed_files)
+    boundary_violations = [
+        path for path in attempted_writes if not any(path.startswith(prefix) for prefix in writable_paths)
+    ]
+    metadata = dict(result.metadata)
+    metadata["trace"] = {
+        "role": role,
+        "read_only": True,
+        "allowed_write_paths": list(writable_paths),
+        "attempted_writes": attempted_writes,
+        "boundary_violations": boundary_violations,
+        "summary": result.summary,
+    }
+    return AdapterResult(
+        success=result.success,
+        summary=result.summary,
+        changed_files=attempted_writes,
+        proposed_patch=result.proposed_patch,
+        metadata=metadata,
+    )
+
+
 class BackendSpecialistService:
     def __init__(self, adapter: Any) -> None:
         self.adapter = adapter
@@ -43,5 +66,9 @@ class BackendSpecialistService:
                 qa_report=qa_report.to_dict() if qa_report else None,
                 writable_paths=writable_paths,
             )
-            return _coerce_result(result)
-        return self.adapter.review(task=task, qa_report=qa_report, contract=contract)
+            return _annotate_result(_coerce_result(result), "backend_specialist", writable_paths)
+        return _annotate_result(
+            self.adapter.review(task=task, qa_report=qa_report, contract=contract),
+            "backend_specialist",
+            writable_paths,
+        )

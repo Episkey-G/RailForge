@@ -15,6 +15,8 @@ def test_spec_init_skill_has_guardrails_and_summary() -> None:
     assert "OpenSpec" in text
     assert "MCP" in text
     assert "Next Steps" in text
+    assert "npx railforge-workflow doctor" in text
+    assert "python -m railforge doctor" not in text
 
 
 def test_spec_research_skill_enforces_constraints_and_boundary() -> None:

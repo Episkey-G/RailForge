@@ -29,6 +29,7 @@ class FileCheckpointStore:
         backlog: Dict[str, Any],
         current_task: Optional[TaskItem],
         langgraph_ref: Optional[Dict[str, str]] = None,
+        git_state: Optional[Dict[str, Any]] = None,
     ) -> CheckpointRecord:
         sequence = run_meta.checkpoint_index + 1
         file_name = "%04d-%s.json" % (sequence, run_meta.state.value.lower())
@@ -36,9 +37,15 @@ class FileCheckpointStore:
         payload = {
             "sequence": sequence,
             "run_state": run_meta.to_dict(),
+            "resume": {
+                "blocked_reason": run_meta.blocked_reason,
+                "resume_from_state": run_meta.resume_from_state,
+            },
             "backlog": backlog,
             "current_task": current_task.to_dict() if current_task else None,
             "langgraph": langgraph_ref or {},
+            "git": git_state or {},
+            "truth_layer": {"source_of_record": "artifacts+git", "checkpoint_layer": "langgraph"},
         }
         self._atomic_write(path, payload)
         return CheckpointRecord(sequence=sequence, state=run_meta.state, path=path, langgraph=langgraph_ref or {})
@@ -48,3 +55,9 @@ class FileCheckpointStore:
         if not files:
             raise ArtifactNotFoundError(str(self.layout.checkpoints))
         return json.loads(files[-1].read_text(encoding="utf-8"))
+
+    def load_latest_or_none(self) -> Optional[Dict[str, Any]]:
+        try:
+            return self.load_latest()
+        except ArtifactNotFoundError:
+            return None

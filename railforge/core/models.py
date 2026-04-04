@@ -57,13 +57,27 @@ class ContractSpec:
     verification: List[str]
     rollback: List[str]
     done_definition: List[str]
+    task_context: List[str] = field(default_factory=list)
+    writeback_requirements: Dict[str, Any] = field(default_factory=dict)
+    role_boundaries: Dict[str, Dict[str, Any]] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "ContractSpec":
-        return cls(**data)
+        return cls(
+            task_id=data["task_id"],
+            scope=data.get("scope", []),
+            non_scope=data.get("non_scope", []),
+            allowed_paths=data.get("allowed_paths", []),
+            verification=data.get("verification", []),
+            rollback=data.get("rollback", []),
+            done_definition=data.get("done_definition", []),
+            task_context=data.get("task_context", []),
+            writeback_requirements=data.get("writeback_requirements", {}),
+            role_boundaries=data.get("role_boundaries", {}),
+        )
 
 
 @dataclass
@@ -101,6 +115,7 @@ class QaReport:
     confidence_score: float = 0.0
     backend: Dict[str, Any] = field(default_factory=dict)
     frontend: Dict[str, Any] = field(default_factory=dict)
+    review: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -111,6 +126,7 @@ class QaReport:
             "outcome": self.outcome,
             "backend": self.backend,
             "frontend": self.frontend,
+            "review": self.review,
             "findings": [finding.to_dict() for finding in self.findings],
             "failure_signature": self.failure_signature,
             "confidence_score": self.confidence_score,
@@ -127,6 +143,7 @@ class QaReport:
             outcome=data.get("outcome", {}),
             backend=data.get("backend", {}),
             frontend=data.get("frontend", {}),
+            review=data.get("review", {}),
             findings=findings,
             failure_signature=data.get("failure_signature"),
             confidence_score=data.get("confidence_score", 0.0),
@@ -253,6 +270,10 @@ class WorkspaceLayout:
         return self.runtime / "checkpoints"
 
     @property
+    def langgraph_dir(self) -> Path:
+        return self.runtime / "langgraph"
+
+    @property
     def approvals(self) -> Path:
         return self.runtime / "approvals"
 
@@ -323,6 +344,22 @@ class WorkspaceLayout:
     def task_traces_dir(self, task_id: str) -> Path:
         return self.task_dir(task_id) / "traces"
 
+    @property
+    def hosted_execution_request_path(self) -> Path:
+        return self.runtime / "hosted_execution_request.json"
+
+    @property
+    def hosted_execution_result_path(self) -> Path:
+        return self.runtime / "hosted_execution_result.json"
+
+    @property
+    def final_review_path(self) -> Path:
+        return self.execution_dir / "final_review.json"
+
+    @property
+    def final_review_markdown_path(self) -> Path:
+        return self.execution_dir / "final_review.md"
+
     def approval_path(self, target: str, task_id: Optional[str] = None) -> Path:
         name = target if not task_id else "%s-%s" % (target, task_id)
         return self.approvals / ("%s.json" % name)
@@ -336,6 +373,7 @@ class WorkspaceLayout:
         self.task_reports_dir.mkdir(parents=True, exist_ok=True)
         self.tasks.mkdir(parents=True, exist_ok=True)
         self.checkpoints.mkdir(parents=True, exist_ok=True)
+        self.langgraph_dir.mkdir(parents=True, exist_ok=True)
         self.approvals.mkdir(parents=True, exist_ok=True)
         self.interrupts.mkdir(parents=True, exist_ok=True)
         if task_id:

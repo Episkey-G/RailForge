@@ -111,6 +111,10 @@ class ArtifactWriter:
         self.layout.ensure(task_id)
         self.write_text(self.layout.task_proposals_dir(task_id) / name, content)
 
+    def write_trace(self, task_id: str, name: str, payload: Dict[str, Any]) -> None:
+        self.layout.ensure(task_id)
+        self.write_json(self.layout.task_traces_dir(task_id) / name, payload)
+
     def write_blocked_interrupt(
         self,
         task_id: str,

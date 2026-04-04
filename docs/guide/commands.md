@@ -22,6 +22,13 @@
 - `rf-spec-impl`
 - `rf-spec-review`
 
+## OpenSpec 生命周期桥接
+
+当 RailForge 主线需要切回 OpenSpec 生命周期动作时，使用以下桥接入口：
+
+- `rf-openspec-apply` 或 `/rf:openspec-apply` -> `openspec-apply-change`
+- `rf-openspec-archive` 或 `/rf:openspec-archive` -> `openspec-archive-change`
+
 ## 低层协议命令
 
 以下命令主要用于调试和高级恢复：
@@ -43,6 +50,12 @@
 /rf:spec-impl
 /rf:spec-review
 ```
+
+## 最终闸门
+
+- backlog 清空后，RailForge 会生成 `.railforge/execution/final_review.json`
+- 该工件汇总所有 task 级 QA 结果，并作为 change 完成前的最终审查闸门
+- 只有 final review 通过后，才建议进入 `rf-openspec-archive`
 
 ## Hosted Codex 说明
 

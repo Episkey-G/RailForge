@@ -3,6 +3,7 @@ from typing import Dict, List, Optional
 
 from railforge.adapters.base import HarnessServices, LeadWriterAdapter, SpecialistAdapter
 from railforge.adapters.git import DryRunGitAdapter
+from railforge.adapters.hosted_codex_adapter import HostedCodexAdapter
 from railforge.adapters.playwright import NoopPlaywrightAdapter
 from railforge.adapters.shell import LocalShellAdapter
 from railforge.core.models import AdapterResult, ContractSpec, QaFinding, QaReport, TaskItem, WorkspaceLayout
@@ -251,3 +252,18 @@ class RecoverableMockServices(object):
 
 def build_repeated_failure_services() -> RecoverableMockServices:
     return RecoverableMockServices()
+
+
+def build_hosted_smoke_services() -> HarnessServices:
+    backend = MockSpecialistAdapter("Backend")
+    frontend = MockSpecialistAdapter("Frontend")
+    return HarnessServices(
+        lead_writer=HostedCodexAdapter(),
+        backend_specialist=backend,
+        frontend_specialist=frontend,
+        git=DryRunGitAdapter(),
+        shell=LocalShellAdapter(),
+        playwright=NoopPlaywrightAdapter(),
+        backend_evaluator=backend,
+        frontend_evaluator=frontend,
+    )

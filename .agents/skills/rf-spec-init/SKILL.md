@@ -23,7 +23,7 @@ description: Use when a repository needs the RailForge spec workflow initialized
 1. 运行 `python -m railforge spec-init`
 2. 确认 `openspec/changes` 和 `openspec/specs` 已存在
 3. 确认 `.railforge/runtime/models.yaml` 与 `.railforge/runtime/policies.yaml` 已生成
-4. 通过 `doctor` 或安装器确认：
+4. 通过安装器 `npx railforge-workflow doctor` 确认：
    - Codex CLI
    - Claude CLI
    - Gemini CLI
@@ -44,4 +44,4 @@ description: Use when a repository needs the RailForge spec workflow initialized
 ## Next Steps
 
 1. 运行 `rf-spec-research` 或 `/rf:spec-research`
-2. 若环境缺失，先通过 `npx railforge-workflow` 或 `doctor` 修复
+2. 若环境缺失，先通过 `npx railforge-workflow doctor` 或安装器重新初始化修复
