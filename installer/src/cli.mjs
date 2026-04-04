@@ -177,7 +177,7 @@ async function runMenu() {
         {
           type: 'list',
           name: 'action',
-          message: '? RailForge 主菜单',
+          message: 'RailForge 主菜单',
           choices: mainMenuChoices(),
         },
       ], inquirer)
@@ -188,7 +188,7 @@ async function runMenu() {
         {
           type: 'list',
           name: 'action',
-          message: '? RailForge 主菜单',
+          message: 'RailForge 主菜单',
           choices: mainMenuChoices(),
         },
       ], null)
@@ -261,7 +261,7 @@ async function runMcpMenu(target) {
       {
         type: 'list',
         name: 'action',
-        message: '? 配置 MCP',
+        message: '配置 MCP',
         choices: mcpMenuChoices(),
       },
     ], inquirer)
@@ -272,7 +272,7 @@ async function runMcpMenu(target) {
       {
         type: 'list',
         name: 'action',
-        message: '? 配置 MCP',
+        message: '配置 MCP',
         choices: mcpMenuChoices(),
       },
     ], null)
@@ -298,7 +298,7 @@ async function runModelMenu(target) {
       {
         type: 'list',
         name: 'leadWriter',
-        message: '? 配置模型路由',
+        message: '配置模型路由',
         choices: modelMenuChoices(),
       },
     ], inquirer)
@@ -309,7 +309,7 @@ async function runModelMenu(target) {
       {
         type: 'list',
         name: 'leadWriter',
-        message: '? 配置模型路由',
+        message: '配置模型路由',
         choices: modelMenuChoices(),
       },
     ], null)
