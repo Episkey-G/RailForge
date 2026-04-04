@@ -80,6 +80,13 @@
 - 方向键移动时不再重复重绘 banner
 - 菜单动作完成后，`按 Enter 返回主菜单` 会真正回到主菜单
 
+此外，`0.1.7` 开始补齐跨平台二进制分发骨架：
+
+- 新增 `scripts/build_binaries.py`，为 `railforge` 与 `railforge-codeagent` 构建平台二进制
+- 新增 `.github/workflows/build-binaries.yml`，在 macOS / Linux / Windows 上构建并上传产物
+- Python 开发依赖新增 `pyinstaller`
+- 后续 installer 将优先调用 `~/.codex/bin/railforge`，缺失时回退到 Python 入口
+
 ### 5. MCP 对齐
 
 安装器的 MCP 分组和目标集合已经与 CCG 对齐：

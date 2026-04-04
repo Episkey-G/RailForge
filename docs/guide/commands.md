@@ -78,6 +78,7 @@ npx railforge-workflow uninstall --target <dir>
 ## 安装位置
 
 - 默认用户级安装根是 `~/.codex`
+- RailForge 二进制目标目录是 `~/.codex/bin/`
 - RailForge skills 安装到 `~/.codex/skills/railforge/`
 - RailForge 用户级配置安装到 `~/.codex/.railforge/`
 - `~/.codex/AGENTS.md` 只会追加 RailForge 标记块

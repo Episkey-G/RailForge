@@ -74,6 +74,7 @@ RailForge 安装器的 MCP 能力与 CCG 保持一致，安装菜单按以下分
 
 ```text
 ~/.codex/
+├── bin/
 ├── skills/railforge/
 ├── AGENTS.md
 └── .railforge/
@@ -81,6 +82,13 @@ RailForge 安装器的 MCP 能力与 CCG 保持一致，安装菜单按以下分
     ├── policies.yaml
     ├── mcp.json
     └── installer-state.json
+```
+
+未来的二进制分发产物会下载到：
+
+```text
+~/.codex/bin/railforge-<platform>-<arch>
+~/.codex/bin/railforge-codeagent-<platform>-<arch>
 ```
 
 如果显式传入 `--target /some/base`，安装位置会变成：

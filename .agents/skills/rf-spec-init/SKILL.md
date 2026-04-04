@@ -20,7 +20,7 @@ description: Use when a repository needs the RailForge spec workflow initialized
 
 ## Steps
 
-1. 运行 `python -m railforge spec-init`
+1. 运行 `python3 -m railforge spec-init --workspace <当前仓库路径>`
 2. 确认 `openspec/changes` 和 `openspec/specs` 已存在
 3. 确认 `.railforge/runtime/models.yaml` 与 `.railforge/runtime/policies.yaml` 已生成
 4. 通过安装器 `npx railforge-workflow doctor` 确认：

@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 from typing import Optional, Sequence
 
+from railforge import __version__
 from railforge.codeagent.service import CodeagentService
 
 
@@ -24,6 +25,7 @@ def _read_prompt(args: argparse.Namespace) -> str:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="railforge.codeagent")
+    parser.add_argument("--version", action="version", version=__version__)
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     for name in ("run", "resume"):

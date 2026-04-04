@@ -1,6 +1,8 @@
 import json
 import os
+import site
 import subprocess
+import sys
 from pathlib import Path
 
 
@@ -24,6 +26,7 @@ def test_installer_init_scaffolds_project_files(tmp_path: Path) -> None:
     assert payload["action"] == "init"
     assert payload["status"] == "installed"
     assert payload["target"] == str(codex_root)
+    assert (codex_root / "bin").exists()
     assert (codex_root / "skills" / "railforge" / "rf-spec-init" / "SKILL.md").exists()
     assert (codex_root / ".railforge" / "models.yaml").exists()
     assert (codex_root / ".railforge" / "policies.yaml").exists()
@@ -246,3 +249,57 @@ def test_installer_probe_mcp_reports_configured_and_synced_files(tmp_path: Path)
     assert "Context7" in payload["configured"]
     assert str(codex_root / "config.toml") in payload["mirrors"]
     assert str(target / ".gemini" / "settings.json") in payload["mirrors"]
+
+
+def test_installer_user_level_to_project_init_and_uninstall_smoke(tmp_path: Path) -> None:
+    home_root = tmp_path / "home"
+    project_root = tmp_path / "project"
+    home_root.mkdir(parents=True, exist_ok=True)
+    project_root.mkdir(parents=True, exist_ok=True)
+
+    env = {
+        **os.environ,
+        "HOME": str(home_root),
+        "PYTHONPATH": os.pathsep.join([str(ROOT), site.getusersitepackages()]),
+        "RAILFORGE_PYTHON_BIN": sys.executable,
+    }
+
+    init_result = subprocess.run(
+        ["node", str(INSTALLER), "init", "--target", str(home_root)],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+    assert init_result.returncode == 0
+
+    codex_root = home_root / ".codex"
+    init_script = codex_root / "skills" / "railforge" / "rf-spec-init" / "scripts" / "run.sh"
+    assert init_script.exists()
+    assert (home_root / ".claude" / ".mcp.json").exists()
+    assert (home_root / ".gemini" / "settings.json").exists()
+
+    skill_result = subprocess.run(
+        [str(init_script)],
+        cwd=project_root,
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+    assert skill_result.returncode == 0
+    assert project_root.joinpath("openspec", "changes").exists()
+    assert project_root.joinpath(".railforge", "runtime", "models.yaml").exists()
+
+    uninstall_result = subprocess.run(
+        ["node", str(INSTALLER), "uninstall", "--target", str(home_root)],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+    assert uninstall_result.returncode == 0
+    assert not codex_root.joinpath("skills", "railforge").exists()
+    assert not codex_root.joinpath(".railforge").exists()
+    assert project_root.joinpath("openspec", "changes").exists()
+    assert project_root.joinpath(".railforge", "runtime", "models.yaml").exists()

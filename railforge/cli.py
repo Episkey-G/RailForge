@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 from typing import Callable, Dict, Optional, Sequence
 
+from railforge import __version__
 from railforge.commands import (
     handle_answer,
     handle_approve,
@@ -30,6 +31,7 @@ def _add_profile_and_scenario(parser: argparse.ArgumentParser) -> None:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="railforge")
+    parser.add_argument("--version", action="version", version=__version__)
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     research_parser = subparsers.add_parser("spec-research")

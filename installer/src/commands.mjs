@@ -1,10 +1,12 @@
 import fs from 'node:fs/promises'
+import os from 'node:os'
 import path from 'node:path'
 
 import { MCP_GROUPS } from './mcp.mjs'
 
 const RAILFORGE_AGENTS_START = '<!-- RAILFORGE-INSTALLER-START -->'
 const RAILFORGE_AGENTS_END = '<!-- RAILFORGE-INSTALLER-END -->'
+const RAILFORGE_MCP_IDS = ['Context7', 'Playwright', 'grok-search']
 
 const SKILL_CONTENT = {
   'rf-spec-init': `---
@@ -26,14 +28,14 @@ description: Use when a repository needs the RailForge spec workflow initialized
 
 ## Steps
 
-1. 运行 \`python -m railforge spec-init\`
+1. 运行 \`python3 -m railforge spec-init --workspace <当前仓库路径>\`
 2. 初始化 OpenSpec 和 \`.railforge\`
 3. 验证环境是否可进入主工作流
 
 ## Next Steps
 
 1. 运行 \`rf-spec-research\`
-2. 如有缺失，先通过安装器或 doctor 修复
+2. 如有缺失，先通过 \`npx railforge-workflow doctor\` 或安装器重新初始化修复
 `,
   'rf-spec-research': `---
 name: rf-spec-research
@@ -309,6 +311,23 @@ roles:
     model: gemini-3.1-pro-preview
 `
 
+const RAILFORGE_BINARY_VERSION = '0.1.0'
+
+function platformSuffix() {
+  const platform = process.platform === 'darwin'
+    ? 'darwin'
+    : process.platform === 'win32'
+      ? 'windows'
+      : 'linux'
+  const arch = os.arch() === 'arm64' ? 'arm64' : 'amd64'
+  return `${platform}-${arch}`
+}
+
+function binaryFileName(baseName) {
+  const ext = process.platform === 'win32' ? '.exe' : ''
+  return `${baseName}-${platformSuffix()}${ext}`
+}
+
 const POLICIES_YAML = `version: 2
 budgets:
   default_repair_budget: 2
@@ -369,6 +388,7 @@ function resolveInstallPaths(targetDir) {
     homeRoot,
     codexRoot,
     railforgeRoot,
+    binRoot: path.join(codexRoot, 'bin'),
     skillsRoot: path.join(codexRoot, 'skills', 'railforge'),
     codexAgentsPath: path.join(codexRoot, 'AGENTS.md'),
     codexConfigPath: path.join(codexRoot, 'config.toml'),
@@ -378,6 +398,8 @@ function resolveInstallPaths(targetDir) {
     statePath: path.join(railforgeRoot, 'installer-state.json'),
     claudeMcpPath: path.join(homeRoot, '.claude', '.mcp.json'),
     geminiSettingsPath: path.join(homeRoot, '.gemini', 'settings.json'),
+    railforgeBinPath: path.join(codexRoot, 'bin', binaryFileName('railforge')),
+    codeagentBinPath: path.join(codexRoot, 'bin', binaryFileName('railforge-codeagent')),
   }
 }
 
@@ -436,15 +458,20 @@ async function removeMarkedBlock(patch) {
   await fs.writeFile(filePath, `${next}\n`, 'utf8')
 }
 
-async function mergeMcpServersFile(filePath, servers) {
+async function mergeMcpServersFile(filePath, servers, managedIds = RAILFORGE_MCP_IDS) {
   await ensureDir(path.dirname(filePath))
   const { payload, createdFile } = await readJsonIfExists(filePath, {})
   if (!payload.mcpServers || typeof payload.mcpServers !== 'object') {
     payload.mcpServers = {}
   }
   const previous = {}
-  for (const [id, config] of Object.entries(servers)) {
+  for (const id of managedIds) {
     previous[id] = Object.prototype.hasOwnProperty.call(payload.mcpServers, id) ? payload.mcpServers[id] : null
+    if (!(id in servers) && id in payload.mcpServers) {
+      delete payload.mcpServers[id]
+    }
+  }
+  for (const [id, config] of Object.entries(servers)) {
     payload.mcpServers[id] = config
   }
   await fs.writeFile(filePath, JSON.stringify(payload, null, 2), 'utf8')
@@ -573,6 +600,16 @@ async function patchCodexConfig(filePath, mcpConfig) {
   }
 
   const sections = {}
+  for (const id of RAILFORGE_MCP_IDS) {
+    if (mcpConfig.mcpServers && id in mcpConfig.mcpServers) {
+      continue
+    }
+    const sectionName = `mcp_servers.${id}`
+    const result = upsertTomlSection(content, sectionName, [])
+    content = result.content
+    sections[sectionName] = result.previous
+    content = restoreTomlSection(content, sectionName, null)
+  }
   for (const [id, config] of Object.entries(mcpConfig.mcpServers || {})) {
     const sectionName = `mcp_servers.${id}`
     const bodyLines = [`command = "${config.command}"`]
@@ -649,8 +686,8 @@ async function writeMirrorFiles(targetDir, mcpConfig) {
   const paths = resolveInstallPaths(targetDir)
   return {
     codex: await patchCodexConfig(paths.codexConfigPath, mcpConfig),
-    claude: await mergeMcpServersFile(paths.claudeMcpPath, mcpConfig.mcpServers || {}),
-    gemini: await mergeMcpServersFile(paths.geminiSettingsPath, mcpConfig.mcpServers || {}),
+    claude: await mergeMcpServersFile(paths.claudeMcpPath, mcpConfig.mcpServers || {}, RAILFORGE_MCP_IDS),
+    gemini: await mergeMcpServersFile(paths.geminiSettingsPath, mcpConfig.mcpServers || {}, RAILFORGE_MCP_IDS),
     mirrors: [paths.codexConfigPath, paths.geminiSettingsPath, paths.claudeMcpPath],
   }
 }
@@ -728,7 +765,35 @@ function runScriptFor(command) {
   return `#!/usr/bin/env bash
 set -euo pipefail
 
-exec python3 -m railforge ${command} "$@"
+SCRIPT_DIR="$(cd "$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
+CODEX_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
+RAILFORGE_BIN="$CODEX_ROOT/bin/railforge"
+PYTHON_BIN="\${RAILFORGE_PYTHON_BIN:-}"
+
+if [[ -x "$RAILFORGE_BIN" ]]; then
+  if [[ " $* " == *" --workspace "* ]]; then
+    exec "$RAILFORGE_BIN" ${command} "$@"
+  fi
+
+  exec "$RAILFORGE_BIN" ${command} --workspace "$PWD" "$@"
+fi
+
+if [[ -z "$PYTHON_BIN" ]]; then
+  if command -v python3 >/dev/null 2>&1; then
+    PYTHON_BIN="python3"
+  elif command -v python >/dev/null 2>&1; then
+    PYTHON_BIN="python"
+  else
+    echo "Python not found. Install RailForge binary or set RAILFORGE_PYTHON_BIN." >&2
+    exit 1
+  fi
+fi
+
+if [[ " $* " == *" --workspace "* ]]; then
+  exec "$PYTHON_BIN" -m railforge ${command} "$@"
+fi
+
+exec "$PYTHON_BIN" -m railforge ${command} --workspace "$PWD" "$@"
 `
 }
 
@@ -745,6 +810,7 @@ export async function initProject(targetDir) {
   const installedFiles = []
 
   await ensureDir(paths.codexRoot)
+  await ensureDir(paths.binRoot)
   await ensureDir(paths.skillsRoot)
   await ensureDir(paths.railforgeRoot)
   await writeFile(paths.modelsPath, MODELS_YAML, installedFiles)

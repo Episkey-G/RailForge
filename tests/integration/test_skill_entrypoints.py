@@ -16,6 +16,8 @@ EXPECTED_SKILLS = {
     "rf-status": "status",
 }
 
+WORKSPACE_AWARE_SKILLS = set(EXPECTED_SKILLS)
+
 BRIDGE_SKILLS = {
     "rf-openspec-apply": "openspec-apply-change",
     "rf-openspec-archive": "openspec-archive-change",
@@ -48,8 +50,12 @@ def test_skill_entrypoints_exist_and_call_expected_commands() -> None:
         assert skill_file.read_text().startswith("---\nname: ")
         assert f"name: {skill_name}" in skill_file.read_text()
         script_text = script_file.read_text()
-        assert f"python3 -m railforge {command}" in script_text
-        assert "python -m railforge" not in script_text
+        assert f'-m railforge {command}' in script_text
+        assert 'RAILFORGE_PYTHON_BIN' in script_text
+        assert 'command -v python3' in script_text
+        if skill_name in WORKSPACE_AWARE_SKILLS:
+            assert '--workspace "$PWD"' in script_text
+        assert 'bin/railforge' in script_text
         assert script_file.stat().st_mode & stat.S_IXUSR
 
     for skill_name, bridge_name in BRIDGE_SKILLS.items():
