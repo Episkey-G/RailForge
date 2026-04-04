@@ -13,6 +13,11 @@ class ProductSpec:
     summary: str
     acceptance_criteria: List[str]
     constraints: List[str] = field(default_factory=list)
+    assumptions: List[str] = field(default_factory=list)
+    open_questions: List[str] = field(default_factory=list)
+    decision_points: List[str] = field(default_factory=list)
+    status: str = "draft"
+    source_request: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -91,9 +96,11 @@ class QaReport:
     static: Dict[str, str]
     runtime: Dict[str, str]
     outcome: Dict[str, str]
-    findings: List[QaFinding]
-    failure_signature: Optional[str]
-    confidence_score: float
+    findings: List[QaFinding] = field(default_factory=list)
+    failure_signature: Optional[str] = None
+    confidence_score: float = 0.0
+    backend: Dict[str, Any] = field(default_factory=dict)
+    frontend: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -102,6 +109,8 @@ class QaReport:
             "static": self.static,
             "runtime": self.runtime,
             "outcome": self.outcome,
+            "backend": self.backend,
+            "frontend": self.frontend,
             "findings": [finding.to_dict() for finding in self.findings],
             "failure_signature": self.failure_signature,
             "confidence_score": self.confidence_score,
@@ -116,6 +125,8 @@ class QaReport:
             static=data.get("static", {}),
             runtime=data.get("runtime", {}),
             outcome=data.get("outcome", {}),
+            backend=data.get("backend", {}),
+            frontend=data.get("frontend", {}),
             findings=findings,
             failure_signature=data.get("failure_signature"),
             confidence_score=data.get("confidence_score", 0.0),
@@ -142,6 +153,8 @@ class RunMeta:
     resume_from_state: Optional[str] = None
     commit_log: List[Dict[str, Any]] = field(default_factory=list)
     checkpoint_index: int = 0
+    thread_id: Optional[str] = None
+    checkpoint_ref: Optional[str] = None
     project_name: str = ""
     request_text: str = ""
 
@@ -162,6 +175,8 @@ class RunMeta:
             resume_from_state=data.get("resume_from_state"),
             commit_log=data.get("commit_log", []),
             checkpoint_index=data.get("checkpoint_index", 0),
+            thread_id=data.get("thread_id"),
+            checkpoint_ref=data.get("checkpoint_ref"),
             project_name=data.get("project_name", ""),
             request_text=data.get("request_text", ""),
         )
@@ -172,6 +187,7 @@ class CheckpointRecord:
     sequence: int
     state: RunState
     path: Path
+    langgraph: Dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -205,12 +221,92 @@ class WorkspaceLayout:
         return self.root / ".railforge"
 
     @property
+    def runtime(self) -> Path:
+        return self.rf / "runtime"
+
+    @property
+    def docs(self) -> Path:
+        return self.root / "docs"
+
+    @property
+    def product_dir(self) -> Path:
+        return self.rf / "product"
+
+    @property
+    def planning_dir(self) -> Path:
+        return self.rf / "planning"
+
+    @property
+    def execution_dir(self) -> Path:
+        return self.rf / "execution"
+
+    @property
+    def task_reports_dir(self) -> Path:
+        return self.execution_dir / "task_reports"
+
+    @property
     def tasks(self) -> Path:
-        return self.rf / "tasks"
+        return self.execution_dir / "tasks"
 
     @property
     def checkpoints(self) -> Path:
-        return self.rf / "checkpoints"
+        return self.runtime / "checkpoints"
+
+    @property
+    def approvals(self) -> Path:
+        return self.runtime / "approvals"
+
+    @property
+    def interrupts(self) -> Path:
+        return self.runtime / "interrupts"
+
+    @property
+    def run_state_path(self) -> Path:
+        return self.runtime / "run_state.json"
+
+    @property
+    def policies_path(self) -> Path:
+        return self.runtime / "policies.yaml"
+
+    @property
+    def models_path(self) -> Path:
+        return self.runtime / "models.yaml"
+
+    @property
+    def progress_path(self) -> Path:
+        return self.runtime / "progress.md"
+
+    @property
+    def product_spec_draft_path(self) -> Path:
+        return self.product_dir / "product_spec.draft.yaml"
+
+    @property
+    def product_spec_path(self) -> Path:
+        return self.product_dir / "product_spec.yaml"
+
+    @property
+    def product_spec_markdown_path(self) -> Path:
+        return self.product_dir / "product_spec.md"
+
+    @property
+    def questions_path(self) -> Path:
+        return self.product_dir / "questions.yaml"
+
+    @property
+    def answers_path(self) -> Path:
+        return self.product_dir / "answers.yaml"
+
+    @property
+    def decisions_path(self) -> Path:
+        return self.product_dir / "decisions.yaml"
+
+    @property
+    def backlog_draft_path(self) -> Path:
+        return self.planning_dir / "backlog.draft.yaml"
+
+    @property
+    def backlog_path(self) -> Path:
+        return self.planning_dir / "backlog.yaml"
 
     def task_dir(self, task_id: str) -> Path:
         return self.tasks / task_id
@@ -227,14 +323,24 @@ class WorkspaceLayout:
     def task_traces_dir(self, task_id: str) -> Path:
         return self.task_dir(task_id) / "traces"
 
+    def approval_path(self, target: str, task_id: Optional[str] = None) -> Path:
+        name = target if not task_id else "%s-%s" % (target, task_id)
+        return self.approvals / ("%s.json" % name)
+
     def ensure(self, task_id: Optional[str] = None) -> None:
         self.rf.mkdir(parents=True, exist_ok=True)
+        self.runtime.mkdir(parents=True, exist_ok=True)
+        self.product_dir.mkdir(parents=True, exist_ok=True)
+        self.planning_dir.mkdir(parents=True, exist_ok=True)
+        self.execution_dir.mkdir(parents=True, exist_ok=True)
+        self.task_reports_dir.mkdir(parents=True, exist_ok=True)
         self.tasks.mkdir(parents=True, exist_ok=True)
         self.checkpoints.mkdir(parents=True, exist_ok=True)
+        self.approvals.mkdir(parents=True, exist_ok=True)
+        self.interrupts.mkdir(parents=True, exist_ok=True)
         if task_id:
             self.task_dir(task_id).mkdir(parents=True, exist_ok=True)
             self.task_reviews_dir(task_id).mkdir(parents=True, exist_ok=True)
             self.task_proposals_dir(task_id).mkdir(parents=True, exist_ok=True)
             self.task_logs_dir(task_id).mkdir(parents=True, exist_ok=True)
             self.task_traces_dir(task_id).mkdir(parents=True, exist_ok=True)
-

@@ -105,7 +105,18 @@ class MockSpecialistAdapter(SpecialistAdapter):
                 task.id,
                 task.title,
             )
-        return AdapterResult(success=True, summary=summary, proposed_patch="diff --git a/example b/example\n")
+        return AdapterResult(
+            success=True,
+            summary=summary,
+            proposed_patch="diff --git a/example b/example\n",
+            metadata={
+                "structured": {
+                    "status": "passed",
+                    "summary": "%s passed" % self.name,
+                    "findings": [],
+                }
+            },
+        )
 
 
 def _default_plans() -> Dict[str, List[MockAttempt]]:
@@ -218,6 +229,8 @@ def build_default_mock_services() -> HarnessServices:
         git=DryRunGitAdapter(),
         shell=LocalShellAdapter(),
         playwright=NoopPlaywrightAdapter(),
+        backend_evaluator=MockSpecialistAdapter("Backend Evaluator"),
+        frontend_evaluator=MockSpecialistAdapter("Frontend Evaluator"),
     )
 
 
@@ -226,6 +239,8 @@ class RecoverableMockServices(object):
         self.lead_writer = RecoverableLeadWriterAdapter()
         self.backend_specialist = MockSpecialistAdapter("Backend")
         self.frontend_specialist = MockSpecialistAdapter("Frontend")
+        self.backend_evaluator = MockSpecialistAdapter("Backend Evaluator")
+        self.frontend_evaluator = MockSpecialistAdapter("Frontend Evaluator")
         self.git = DryRunGitAdapter()
         self.shell = LocalShellAdapter()
         self.playwright = NoopPlaywrightAdapter()
@@ -236,4 +251,3 @@ class RecoverableMockServices(object):
 
 def build_repeated_failure_services() -> RecoverableMockServices:
     return RecoverableMockServices()
-

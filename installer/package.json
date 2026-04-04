@@ -1,0 +1,12 @@
+{
+  "name": "railforge-workflow",
+  "version": "0.1.0",
+  "description": "RailForge spec workflow installer",
+  "type": "module",
+  "bin": {
+    "railforge-workflow": "bin/railforge.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

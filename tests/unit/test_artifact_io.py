@@ -12,8 +12,8 @@ def test_workspace_init_writes_default_configs(tmp_path: Path) -> None:
 
     store.init_workspace()
 
-    policies = store.read_yaml(layout.rf / "policies.yaml")
-    models = store.read_yaml(layout.rf / "models.yaml")
+    policies = store.read_yaml(layout.policies_path)
+    models = store.read_yaml(layout.models_path)
 
     assert policies["budgets"]["default_repair_budget"] >= 1
     assert "lead_writer" in models["roles"]

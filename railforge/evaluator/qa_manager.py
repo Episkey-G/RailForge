@@ -1,16 +1,11 @@
 from typing import Iterable, List
 
 from railforge.core.models import PhaseEvaluationResult, QaFinding, QaReport, TaskItem
+from railforge.evaluator.aggregate_eval import AggregateEvaluator, coerce_phase_result
 
 
 def _coerce_phase(value):
-    if isinstance(value, PhaseEvaluationResult):
-        return value
-    return PhaseEvaluationResult(
-        status=value.get("status", "passed"),
-        summary=value.get("summary", ""),
-        findings=[],
-    )
+    return coerce_phase_result(value)
 
 
 class QaManager:
@@ -46,6 +41,24 @@ class QaManager:
             confidence_score=1.0 if status == "approved" else 0.35,
         )
 
+    def build_dual_report(
+        self,
+        task: TaskItem,
+        backend_status,
+        frontend_status,
+    ) -> QaReport:
+        aggregate_phase = AggregateEvaluator().merge(backend_status=backend_status, frontend_status=frontend_status)
+        backend_phase = _coerce_phase(backend_status)
+        frontend_phase = _coerce_phase(frontend_status)
+        return self.build_report(
+            task=task,
+            static_status=backend_phase,
+            runtime_status=frontend_phase,
+            outcome_status=aggregate_phase,
+            findings=aggregate_phase.findings,
+            failure_signature=aggregate_phase.details.get("failure_signature"),
+        )
+
     def aggregate(
         self,
         task: TaskItem,
@@ -66,4 +79,3 @@ class QaManager:
             findings=findings,
             failure_signature=failure_signature,
         )
-

@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional
 
 from railforge.artifacts.loaders import ArtifactLoader
 from railforge.artifacts.writers import ArtifactWriter
+from railforge.core.errors import ArtifactNotFoundError
 from railforge.core.models import ContractSpec, ProductSpec, QaReport, RunMeta, TaskItem, WorkspaceLayout
 
 
@@ -42,17 +43,17 @@ class ArtifactStore:
     def load_run_state(self) -> RunMeta:
         return self.loader.load_run_state()
 
-    def save_product_spec(self, spec: ProductSpec) -> None:
-        self.writer.write_product_spec(spec)
+    def save_product_spec(self, spec: ProductSpec, draft: bool = False) -> None:
+        self.writer.write_product_spec(spec, draft=draft)
 
-    def load_product_spec(self) -> ProductSpec:
-        return self.loader.load_product_spec()
+    def load_product_spec(self, draft: bool = False) -> ProductSpec:
+        return self.loader.load_product_spec(draft=draft)
 
-    def save_backlog(self, project: str, current_task: Optional[str], items: List[TaskItem]) -> None:
-        self.writer.write_backlog(project, current_task, items)
+    def save_backlog(self, project: str, current_task: Optional[str], items: List[TaskItem], draft: bool = False) -> None:
+        self.writer.write_backlog(project, current_task, items, draft=draft)
 
-    def load_backlog(self) -> Dict[str, Any]:
-        return self.loader.load_backlog()
+    def load_backlog(self, draft: bool = False) -> Dict[str, Any]:
+        return self.loader.load_backlog(draft=draft)
 
     def save_task(self, task: TaskItem) -> None:
         self.writer.write_task(task)
@@ -86,6 +87,37 @@ class ArtifactStore:
 
     def load_unblock_decision(self) -> Dict[str, Any]:
         return self.loader.load_unblock_decision()
+
+    def save_questions(self, payload: Dict[str, Any]) -> None:
+        self.writer.write_questions(payload)
+
+    def load_questions(self) -> Dict[str, Any]:
+        return self.loader.load_questions()
+
+    def save_answers(self, payload: Dict[str, Any]) -> None:
+        self.writer.write_answers(payload)
+
+    def load_answers(self) -> Dict[str, Any]:
+        return self.loader.load_answers()
+
+    def save_decisions(self, payload: Dict[str, Any]) -> None:
+        self.writer.write_decisions(payload)
+
+    def load_decisions(self) -> Dict[str, Any]:
+        return self.loader.load_decisions()
+
+    def save_approval(self, target: str, approved_by: str, note: str, task_id: str = "") -> Dict[str, Any]:
+        return self.writer.write_approval(target=target, approved_by=approved_by, note=note, task_id=task_id)
+
+    def load_approval(self, target: str, task_id: str = "") -> Dict[str, Any]:
+        return self.loader.load_approval(target=target, task_id=task_id)
+
+    def has_approval(self, target: str, task_id: str = "") -> bool:
+        try:
+            self.load_approval(target=target, task_id=task_id)
+        except ArtifactNotFoundError:
+            return False
+        return True
 
     def save_blocked_interrupt(
         self,

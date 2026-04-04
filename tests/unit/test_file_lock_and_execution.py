@@ -80,5 +80,8 @@ def test_execution_services_forward_expected_context(tmp_path: Path) -> None:
     frontend.review(layout=layout, task=task, contract=contract, qa_report=None)
 
     assert len(adapter.calls) == 3
-    assert adapter.calls[0]["writable_paths"] == ["backend/", "tests/", ".railforge/tasks/T-001/"]
-    assert adapter.calls[1]["writable_paths"] == [".railforge/tasks/T-001/reviews/", ".railforge/tasks/T-001/proposals/"]
+    assert adapter.calls[0]["writable_paths"] == ["backend/", "tests/", ".railforge/execution/tasks/T-001/"]
+    assert adapter.calls[1]["writable_paths"] == [
+        ".railforge/execution/tasks/T-001/reviews/",
+        ".railforge/execution/tasks/T-001/proposals/",
+    ]

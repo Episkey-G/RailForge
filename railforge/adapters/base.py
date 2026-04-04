@@ -1,8 +1,28 @@
-from dataclasses import dataclass
+from __future__ import annotations
+
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterable, List, Optional
+from typing import Any, Dict, Iterable, List, Optional
 
 from railforge.core.models import AdapterResult, CommitGateResult, ContractSpec, QaReport, TaskItem, WorkspaceLayout
+
+
+@dataclass
+class AdapterInvocation:
+    role: str
+    backend: str
+    workspace: str
+    command: List[str]
+    payload: Dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "role": self.role,
+            "backend": self.backend,
+            "workspace": self.workspace,
+            "command": list(self.command),
+            "payload": dict(self.payload),
+        }
 
 
 class LeadWriterAdapter:
@@ -56,4 +76,5 @@ class HarnessServices:
     git: GitAdapter
     shell: ShellAdapter
     playwright: PlaywrightAdapter
-
+    backend_evaluator: Optional[SpecialistAdapter] = None
+    frontend_evaluator: Optional[SpecialistAdapter] = None

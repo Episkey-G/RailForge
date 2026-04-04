@@ -31,8 +31,8 @@ class FrontendSpecialistService:
         qa_report: Optional[QaReport],
     ) -> AdapterResult:
         writable_paths = [
-            ".railforge/tasks/%s/reviews/" % task.id,
-            ".railforge/tasks/%s/proposals/" % task.id,
+            str(layout.task_reviews_dir(task.id).relative_to(layout.root)) + "/",
+            str(layout.task_proposals_dir(task.id).relative_to(layout.root)) + "/",
         ]
         if hasattr(self.adapter, "invoke"):
             result = self.adapter.invoke(

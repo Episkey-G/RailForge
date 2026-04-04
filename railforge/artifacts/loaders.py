@@ -27,13 +27,15 @@ class ArtifactLoader:
         return payload or {}
 
     def load_run_state(self) -> RunMeta:
-        return RunMeta.from_dict(self.read_json(self.layout.rf / "run_state.json"))
+        return RunMeta.from_dict(self.read_json(self.layout.run_state_path))
 
-    def load_product_spec(self) -> ProductSpec:
-        return ProductSpec.from_dict(self.read_yaml(self.layout.rf / "product_spec.yaml"))
+    def load_product_spec(self, draft: bool = False) -> ProductSpec:
+        path = self.layout.product_spec_draft_path if draft else self.layout.product_spec_path
+        return ProductSpec.from_dict(self.read_yaml(path))
 
-    def load_backlog(self) -> Dict[str, Any]:
-        return self.read_yaml(self.layout.rf / "backlog.yaml")
+    def load_backlog(self, draft: bool = False) -> Dict[str, Any]:
+        path = self.layout.backlog_draft_path if draft else self.layout.backlog_path
+        return self.read_yaml(path)
 
     def load_task(self, task_id: str) -> TaskItem:
         return TaskItem.from_dict(self.read_yaml(self.layout.task_dir(task_id) / "task.yaml"))
@@ -44,8 +46,20 @@ class ArtifactLoader:
     def load_qa_report(self, task_id: str) -> QaReport:
         return QaReport.from_dict(self.read_json(self.layout.task_dir(task_id) / "qa_report.json"))
 
+    def load_questions(self) -> Dict[str, Any]:
+        return self.read_yaml(self.layout.questions_path)
+
+    def load_answers(self) -> Dict[str, Any]:
+        return self.read_yaml(self.layout.answers_path)
+
+    def load_decisions(self) -> Dict[str, Any]:
+        return self.read_yaml(self.layout.decisions_path)
+
+    def load_approval(self, target: str, task_id: str = "") -> Dict[str, Any]:
+        return self.read_json(self.layout.approval_path(target, task_id or None))
+
     def load_unblock_decision(self) -> Dict[str, Any]:
-        return self.read_json(self.layout.rf / "unblock_decision.json")
+        return self.read_json(self.layout.interrupts / "unblock_decision.json")
 
     def load_blocked_interrupt(self) -> Dict[str, Any]:
-        return self.read_json(self.layout.rf / "blocked_interrupt.json")
+        return self.read_json(self.layout.interrupts / "blocked_interrupt.json")

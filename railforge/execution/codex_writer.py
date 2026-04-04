@@ -30,7 +30,7 @@ class CodexWriterService:
         contract: ContractSpec,
         run_meta: RunMeta,
     ) -> AdapterResult:
-        writable_paths = list(contract.allowed_paths) + [".railforge/tasks/%s/" % task.id]
+        writable_paths = list(contract.allowed_paths) + [str(layout.task_dir(task.id).relative_to(layout.root)) + "/"]
         if hasattr(self.adapter, "invoke"):
             result = self.adapter.invoke(
                 role="lead_writer",

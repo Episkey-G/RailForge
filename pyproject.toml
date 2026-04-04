@@ -7,13 +7,14 @@ name = "railforge"
 version = "0.1.0"
 description = "State-machine driven agent harness for RailForge"
 requires-python = ">=3.9"
-dependencies = ["PyYAML>=6.0"]
+dependencies = ["PyYAML>=6.0", "langgraph>=0.2.50"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
 
 [project.scripts]
 railforge = "railforge.cli:main"
+railforge-codeagent = "railforge.codeagent.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["railforge*"]
