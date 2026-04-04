@@ -47,8 +47,9 @@ npx railforge-workflow
 
 安装器目标是提供与 CCG 接近的交互式初始化体验，包括：
 
-- 初始化 OpenSpec 与 `.railforge`
-- 安装 `spec-*` 主工作流命令
+- 在 `~/.codex/skills/railforge/` 下安装 `spec-*` 主工作流 skills
+- 在 `~/.codex/.railforge/` 下安装 RailForge 用户级配置
+- 把必要的 MCP 镜像同步到 `~/.claude/.mcp.json` 与 `~/.gemini/settings.json`
 - 配置模型路由
 - 配置 MCP
 
@@ -68,6 +69,27 @@ RailForge 安装器的 MCP 能力与 CCG 保持一致，安装菜单按以下分
 - `docs/architecture/`：长期有效的架构、仓库结构和测试矩阵说明。
 - `.railforge/`：运行时真源，保存 spec、backlog、任务工件、checkpoint 和审批记录。
 - `tests/`：单元测试和集成 smoke 测试。
+
+安装后用户级文件布局为：
+
+```text
+~/.codex/
+├── skills/railforge/
+├── AGENTS.md
+└── .railforge/
+    ├── models.yaml
+    ├── policies.yaml
+    ├── mcp.json
+    └── installer-state.json
+```
+
+如果显式传入 `--target /some/base`，安装位置会变成：
+
+```text
+/some/base/.codex/
+```
+
+也就是说，`--target` 代表“用户级安装根的父目录”，而不是旧版那种“直接把文件铺到目标根目录”。
 
 ## 最佳实践
 

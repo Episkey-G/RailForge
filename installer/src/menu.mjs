@@ -2,7 +2,7 @@ import { MCP_GROUPS } from './mcp.mjs'
 
 export function renderHeader(selectedIndex = 0) {
   const mcpSummary = MCP_GROUPS.map((group) => `- ${group.title}: ${group.items.map((item) => item.label).join(', ')}`)
-  const versionLine = '║       v0.1.3  |  9 commands  |  zh-CN  |  ace-tool       ║'
+  const versionLine = '║       v0.1.4  |  9 commands  |  zh-CN  |  ace-tool       ║'
   const menuLines = mainMenuChoices().map((item, index) => {
     const prefix = index === selectedIndex ? '❯' : ' '
     return `${prefix} ${item.name}`

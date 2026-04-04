@@ -1,4 +1,5 @@
 import fs from 'node:fs'
+import { homedir } from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
 import * as readline from 'node:readline'
@@ -31,7 +32,7 @@ function doctorPayload() {
 }
 
 function installState(target) {
-  const modelsPath = path.join(target, '.railforge', 'runtime', 'models.yaml')
+  const modelsPath = path.join(target, '.codex', '.railforge', 'models.yaml')
   return fs.existsSync(modelsPath)
 }
 
@@ -41,6 +42,10 @@ function optionValue(argv, flag, fallback = null) {
     return fallback
   }
   return argv[index + 1]
+}
+
+function defaultInstallTarget() {
+  return homedir()
 }
 
 function renderFallbackList(message, choices, selectedIndex) {
@@ -145,23 +150,24 @@ async function runMenu() {
       mainMenuChoices(),
       (selectedIndex) => `${renderHeader(selectedIndex)}\n\n↑↓ navigate • ⏎ select`
     )
+    const target = defaultInstallTarget()
 
     if (action === 'init') {
-      console.log(JSON.stringify(await initProject(process.cwd()), null, 2))
+      console.log(JSON.stringify(await initProject(target), null, 2))
     }
     else if (action === 'update') {
-      if (!installState(process.cwd())) {
+      if (!installState(target)) {
         console.log(JSON.stringify({ action: 'update', status: 'not-installed', suggestion: '先执行初始化 RailForge 配置' }, null, 2))
       }
       else {
-        console.log(JSON.stringify(await updateProject(process.cwd()), null, 2))
+        console.log(JSON.stringify(await updateProject(target), null, 2))
       }
     }
     else if (action === 'config-mcp') {
-      await runMcpMenu(process.cwd())
+      await runMcpMenu(target)
     }
     else if (action === 'config-model') {
-      await runModelMenu(process.cwd())
+      await runModelMenu(target)
     }
     else if (action === 'tools' || action === 'check-cli') {
       console.log(JSON.stringify(doctorPayload(), null, 2))
@@ -233,7 +239,7 @@ async function runModelMenu(target) {
 export async function main(argv = []) {
   const [command = 'menu'] = argv
   const targetFlag = argv.indexOf('--target')
-  const target = targetFlag >= 0 ? argv[targetFlag + 1] : process.cwd()
+  const target = targetFlag >= 0 ? argv[targetFlag + 1] : defaultInstallTarget()
 
   if (command === 'menu') {
     await runMenu()

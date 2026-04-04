@@ -74,3 +74,13 @@ npx railforge-workflow init --target <dir>
 npx railforge-workflow update --target <dir>
 npx railforge-workflow uninstall --target <dir>
 ```
+
+## 安装位置
+
+- 默认用户级安装根是 `~/.codex`
+- RailForge skills 安装到 `~/.codex/skills/railforge/`
+- RailForge 用户级配置安装到 `~/.codex/.railforge/`
+- `~/.codex/AGENTS.md` 只会追加 RailForge 标记块
+- `~/.claude/.mcp.json` 与 `~/.gemini/settings.json` 只同步 RailForge 管理的 MCP 条目
+- 若传入 `--target /some/base`，实际安装位置是 `/some/base/.codex/`
+- 卸载时只移除 RailForge 自己的命名空间目录和共享文件中的标记块/镜像条目
