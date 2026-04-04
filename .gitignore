@@ -1,6 +1,6 @@
 .pytest_cache/
 __pycache__/
 *.py[cod]
-src/*.egg-info/
+*.egg-info/
 .DS_Store
 .railforge/
