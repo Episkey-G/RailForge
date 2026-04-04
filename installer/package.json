@@ -3,8 +3,37 @@
   "version": "0.1.0",
   "description": "RailForge spec workflow installer",
   "type": "module",
+  "license": "MIT",
+  "private": false,
+  "keywords": [
+    "railforge",
+    "workflow",
+    "codex",
+    "claude",
+    "gemini",
+    "openspec",
+    "installer",
+    "mcp"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Episkey-G/RailForge.git",
+    "directory": "installer"
+  },
+  "homepage": "https://github.com/Episkey-G/RailForge#readme",
+  "bugs": {
+    "url": "https://github.com/Episkey-G/RailForge/issues"
+  },
   "bin": {
     "railforge-workflow": "bin/railforge.mjs"
+  },
+  "files": [
+    "bin/railforge.mjs",
+    "src"
+  ],
+  "scripts": {
+    "doctor": "node ./bin/railforge.mjs doctor",
+    "help": "node ./bin/railforge.mjs help"
   },
   "engines": {
     "node": ">=20"

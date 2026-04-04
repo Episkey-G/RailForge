@@ -70,3 +70,5 @@ RailForge 安装器的 MCP 能力与 CCG 保持一致，安装菜单按以下分
 - `docs/architecture/best-practices.md`
 - `docs/guide/commands.md`
 - `docs/guide/faq.md`
+- `docs/guide/release-notes.md`
+- `docs/guide/npm-publish-checklist.md`
