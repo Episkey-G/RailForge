@@ -3,7 +3,7 @@
 ## 版本
 
 - RailForge Python core: `0.1.0`
-- `railforge-workflow` installer: `0.1.1`
+- `railforge-workflow` installer: `0.1.2`
 
 ## 本次发布内容
 
@@ -62,6 +62,12 @@
 - `help`
 - `uninstall`
 
+此外，`0.1.2` 修复了一个交互式菜单缺口：
+
+- 即使在源码目录本地运行 `npx railforge-workflow`
+- 即使运行时没有成功加载 `inquirer`
+- 安装器仍会退回到零依赖的方向键菜单，而不是退回“输入编号或字母”
+
 ### 5. MCP 对齐
 
 安装器的 MCP 分组和目标集合已经与 CCG 对齐：
@@ -75,8 +81,9 @@
 - `python -m pytest -q`: `119 passed`
 - `railforge.codeagent probe --backend codex|claude|gemini`: 已验证
 - installer `doctor/update/config-model/config-mcp/probe-mcp/help/uninstall`: 已验证
+- 本地源码目录 `npx railforge-workflow`：已验证显示 `↑↓ navigate • ⏎ select`
 
 ## 当前边界
 
-- `railforge-workflow` 已完成 `0.1.1` 发布前验证，等待或已执行 npm 发布
+- `railforge-workflow` 已完成 `0.1.2` 发布前验证，等待或已执行 npm 发布
 - 安装器已经可用，但与 CCG 的完整菜单深度和跨宿主自动化相比仍有继续迭代空间

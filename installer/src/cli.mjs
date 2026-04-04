@@ -1,7 +1,8 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
-import readline from 'node:readline/promises'
+import * as readline from 'node:readline'
+import { createInterface } from 'node:readline/promises'
 
 import { initProject, probeMcpConfig, uninstallProject, updateProject, writeMcpConfig, writeModelConfig } from './commands.mjs'
 import { mainMenuChoices, mcpMenuChoices, modelMenuChoices, renderHeader } from './menu.mjs'
@@ -52,6 +53,114 @@ async function getPromptEngine() {
   }
 }
 
+function renderFallbackList(message, choices, selectedIndex) {
+  const lines = [`? ${message}`]
+  for (const [index, choice] of choices.entries()) {
+    const prefix = index === selectedIndex ? '❯' : ' '
+    lines.push(`${prefix} ${choice.name}`)
+  }
+  lines.push('')
+  lines.push('↑↓ navigate • ⏎ select')
+  return lines.join('\n')
+}
+
+async function fallbackListPrompt(message, choices) {
+  const input = process.stdin
+  const output = process.stdout
+  const canUseRawMode = input.isTTY && typeof input.setRawMode === 'function'
+  readline.emitKeypressEvents(input)
+  if (canUseRawMode) {
+    input.setRawMode(true)
+  }
+
+  let selectedIndex = 0
+  let renderedLines = 0
+
+  const repaint = () => {
+    const frame = renderFallbackList(message, choices, selectedIndex)
+    if (renderedLines > 0) {
+      output.write(`\x1b[${renderedLines}F\x1b[J`)
+    }
+    output.write(frame)
+    renderedLines = frame.split('\n').length
+  }
+
+  repaint()
+
+  return await new Promise((resolve, reject) => {
+    const cleanup = () => {
+      input.off('keypress', onKeypress)
+      input.off('end', onEnd)
+      if (canUseRawMode) {
+        input.setRawMode(false)
+      }
+      output.write('\n')
+    }
+
+    const onEnd = () => {
+      cleanup()
+      reject(new Error('prompt_aborted'))
+    }
+
+    const onKeypress = (chars, key = {}) => {
+      if (key.name === 'up') {
+        selectedIndex = (selectedIndex - 1 + choices.length) % choices.length
+        repaint()
+        return
+      }
+      if (key.name === 'down') {
+        selectedIndex = (selectedIndex + 1) % choices.length
+        repaint()
+        return
+      }
+      if (key.name === 'return' || key.name === 'enter') {
+        const value = choices[selectedIndex]?.value
+        cleanup()
+        resolve(value)
+        return
+      }
+      if (chars === '\u0004' || (key.ctrl && (key.name === 'd' || key.name === 'c'))) {
+        cleanup()
+        reject(new Error('prompt_aborted'))
+      }
+    }
+
+    input.on('keypress', onKeypress)
+    input.on('end', onEnd)
+  })
+}
+
+async function fallbackInputPrompt(message) {
+  const rl = createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  })
+  try {
+    return await rl.question(`${message} `)
+  }
+  finally {
+    await rl.close()
+  }
+}
+
+async function promptWithFallback(questions, inquirer) {
+  if (inquirer) {
+    return await inquirer.prompt(questions)
+  }
+
+  const answers = {}
+  for (const question of questions) {
+    if (question.type === 'list') {
+      answers[question.name] = await fallbackListPrompt(question.message, question.choices)
+      continue
+    }
+    if (question.type === 'input') {
+      answers[question.name] = await fallbackInputPrompt(question.message)
+    }
+  }
+  return answers
+}
+
 async function runMenu() {
   if (!process.stdout.isTTY || !process.stdin.isTTY) {
     console.log(renderHeader())
@@ -64,39 +173,26 @@ async function runMenu() {
     console.log(renderHeader())
     let action
     if (inquirer) {
-      const answer = await inquirer.prompt([
+      const answer = await promptWithFallback([
         {
           type: 'list',
           name: 'action',
           message: '? RailForge 主菜单',
           choices: mainMenuChoices(),
         },
-      ])
+      ], inquirer)
       action = answer.action
     }
     else {
-      const rl = readline.createInterface({
-        input: process.stdin,
-        output: process.stdout,
-      })
-      console.log(mainMenuChoices().map((item) => item.name).join('\n'))
-      const answer = await rl.question('\n选择操作编号或字母: ')
-      await rl.close()
-      const normalized = answer.trim().toUpperCase()
-      const fallbackMap = {
-        '1': 'init',
-        '2': 'update',
-        '3': 'config-mcp',
-        '4': 'config-model',
-        '5': 'tools',
-        'T': 'tools',
-        'C': 'check-cli',
-        'H': 'help',
-        '-': 'uninstall',
-        '6': 'uninstall',
-        'Q': 'quit',
-      }
-      action = fallbackMap[normalized] || 'invalid'
+      const answer = await promptWithFallback([
+        {
+          type: 'list',
+          name: 'action',
+          message: '? RailForge 主菜单',
+          choices: mainMenuChoices(),
+        },
+      ], null)
+      action = answer.action
     }
 
     if (action === 'init') {
@@ -146,13 +242,13 @@ async function runMenu() {
     }
 
     if (inquirer) {
-      await inquirer.prompt([
+      await promptWithFallback([
         {
           type: 'input',
           name: 'continue',
           message: '按 Enter 返回主菜单...',
         },
-      ])
+      ], inquirer)
     }
   }
 }
@@ -161,18 +257,26 @@ async function runMcpMenu(target) {
   const inquirer = await getPromptEngine()
   let action
   if (inquirer) {
-    const answer = await inquirer.prompt([
+    const answer = await promptWithFallback([
       {
         type: 'list',
         name: 'action',
         message: '? 配置 MCP',
         choices: mcpMenuChoices(),
       },
-    ])
+    ], inquirer)
     action = answer.action
   }
   else {
-    action = 'write-config'
+    const answer = await promptWithFallback([
+      {
+        type: 'list',
+        name: 'action',
+        message: '? 配置 MCP',
+        choices: mcpMenuChoices(),
+      },
+    ], null)
+    action = answer.action
   }
   if (action === 'back') {
     return
@@ -190,18 +294,26 @@ async function runModelMenu(target) {
   const inquirer = await getPromptEngine()
   let leadWriter
   if (inquirer) {
-    const answer = await inquirer.prompt([
+    const answer = await promptWithFallback([
       {
         type: 'list',
         name: 'leadWriter',
         message: '? 配置模型路由',
         choices: modelMenuChoices(),
       },
-    ])
+    ], inquirer)
     leadWriter = answer.leadWriter
   }
   else {
-    leadWriter = 'hosted_codex'
+    const answer = await promptWithFallback([
+      {
+        type: 'list',
+        name: 'leadWriter',
+        message: '? 配置模型路由',
+        choices: modelMenuChoices(),
+      },
+    ], null)
+    leadWriter = answer.leadWriter
   }
   if (leadWriter === 'back') {
     return
