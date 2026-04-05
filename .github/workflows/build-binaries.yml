@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     tags:
-      - "railforge-v*"
+      - "railforge-preset"
 
 jobs:
   build:
@@ -38,7 +38,7 @@ jobs:
           path: dist/*
 
   release:
-    if: startsWith(github.ref, 'refs/tags/railforge-v')
+    if: github.ref == 'refs/tags/railforge-preset'
     needs: build
     runs-on: ubuntu-latest
     permissions:
