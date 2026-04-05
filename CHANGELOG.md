@@ -15,6 +15,8 @@
 - `spec_init` doctor 分级：返回 READY / DEGRADED / BLOCKED 三级状态
 - workspace 自动推断：前门命令自动向上查找 `.railforge/` 或 `.git/` 标记
 - 14 个新增回归测试覆盖全部 stabilize 修复点
+- `CHANGELOG.md`：版本更新和修改日志
+- `docs/guide/build-and-publish.md`：打包、GitHub Release 上传和 npm 发布完整指南
 
 ### Changed
 - `_handle_repairing()` 恢复目标从 `IMPLEMENTING` 改为 `STATIC_REVIEW`（repair 耗尽后 resume 不再重放 lead writer）
@@ -23,6 +25,8 @@
 - 前门命令（spec-*, status, approve, resume 等）`--workspace` 从 required 改为 optional
 - 低层协议命令（prepare-execution, record-execution, answer）`--workspace` 保持 required
 - repo reality audit 从 `run_loop.py` 下沉到 `ContractGate`
+- `README.md` 重写：按快速开始→操作流→桥接命令→低层命令分层组织
+- `docs/guide/commands.md` 更新：新增桥接命令文档
 
 ### Fixed
 - 修复 repair_budget_exhausted 后 resume 重新触发 lead writer 导致错误执行重放的问题
@@ -30,6 +34,10 @@
 - 修复 contract 指向不存在目录时执行器系统性偏航的问题
 - 修复 spec-impl 等命令不传 --workspace 直接报错的前门 UX 问题
 - 修复批准和恢复需要两步操作的交互问题
+
+### Released
+- GitHub Release `railforge-preset` 已更新：新版 `railforge-darwin-arm64` + `railforge-codeagent-darwin-arm64`
+- npm `railforge-workflow` 0.1.14 已发布（待 OTP 确认）
 
 ---
 

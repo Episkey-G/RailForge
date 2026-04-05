@@ -135,62 +135,148 @@ npx railforge-workflow doctor
 
 ---
 
-## 三、完整发布流程（推荐顺序）
+## 三、GitHub Release 手动更新
 
-### 1. 版本号更新
+当不需要跨平台 CI 构建、只需更新当前平台二进制时，可以直接用 `gh` CLI 上传：
+
+### 打包并上传
 
 ```bash
-# Python 版本
-# 编辑 railforge/__init__.py 中的 __version__
-# 编辑 pyproject.toml 中的 version
+# 1. 打包两个二进制
+python -m PyInstaller railforge-darwin-arm64.spec --distpath dist/ --noconfirm
+python -m PyInstaller railforge-codeagent-darwin-arm64.spec --distpath dist/ --noconfirm
 
-# 安装器版本（如需发布安装器）
-# 编辑 installer/package.json 中的 version 和 railforgeBinaryVersion
+# 2. 刷新 manifest（用 scripts/build_binaries.py 或手动）
+python scripts/build_binaries.py   # 会清空 dist/ 再重建
+
+# 3. 上传到已有 Release（--clobber 替换同名资产）
+gh release upload railforge-preset \
+  dist/railforge-darwin-arm64 \
+  dist/railforge-codeagent-darwin-arm64 \
+  dist/manifest-darwin-arm64.json \
+  dist/manifest.txt \
+  --clobber
+
+# 4. 验证
+gh release view railforge-preset --json assets --jq '.assets[] | "\(.name) \(.size)"'
 ```
 
-### 2. 更新文档
-
-- 更新 `CHANGELOG.md`
-- 更新 `docs/guide/release-notes.md`
-
-### 3. 测试
+### 部署到本机
 
 ```bash
-python -m pytest tests/ -q              # 全量测试
-~/.codex/bin/railforge --version        # 验证当前二进制版本
-```
+cp dist/railforge-darwin-arm64 ~/.codex/bin/railforge
+cp dist/railforge-codeagent-darwin-arm64 ~/.codex/bin/railforge-codeagent
 
-### 4. 提交和打 tag
-
-```bash
-git add -A
-git commit -m "release: v0.x.y"
-git tag railforge-preset                # 触发 CI 构建
-git push origin main --tags
-```
-
-### 5. 等待 CI 完成
-
-- 检查 GitHub Actions 构建状态
-- 确认 GitHub Release 资产已上传
-
-### 6. 发布安装器（如需）
-
-```bash
-cd installer
-npm publish --access public
-```
-
-### 7. 本地验证
-
-```bash
-npx railforge-workflow                  # 安装/更新
-~/.codex/bin/railforge spec-init        # 验证功能
+# 验证
+~/.codex/bin/railforge --version
+~/.codex/bin/railforge --help
 ```
 
 ---
 
-## 四、目录和文件参考
+## 四、完整发布流程（推荐顺序）
+
+一次完整发布包含三个目标：git 仓库、GitHub Release、npm registry。
+
+### 步骤 1：代码提交
+
+```bash
+# 确认测试通过
+python -m pytest tests/ -q
+
+# 提交改动（只添加相关文件，不用 git add -A）
+git add <相关文件>
+git commit -m "fix/feat/release: 描述"
+```
+
+### 步骤 2：打包二进制
+
+```bash
+# 完整打包（推荐）
+python scripts/build_binaries.py
+
+# 或单独打包
+python -m PyInstaller railforge-darwin-arm64.spec --distpath dist/ --noconfirm
+python -m PyInstaller railforge-codeagent-darwin-arm64.spec --distpath dist/ --noconfirm
+```
+
+### 步骤 3：更新 GitHub Release
+
+```bash
+# 方法 A：手动上传（仅当前平台）
+gh release upload railforge-preset dist/* --clobber
+
+# 方法 B：通过 CI tag 触发（跨平台）
+git tag -d railforge-preset 2>/dev/null
+git push origin :refs/tags/railforge-preset 2>/dev/null
+git tag railforge-preset
+git push origin railforge-preset
+```
+
+### 步骤 4：部署到本机
+
+```bash
+cp dist/railforge-darwin-arm64 ~/.codex/bin/railforge
+cp dist/railforge-codeagent-darwin-arm64 ~/.codex/bin/railforge-codeagent
+```
+
+### 步骤 5：发布 npm 安装器（如需）
+
+```bash
+# 递增版本号
+# 编辑 installer/package.json 中的 version
+
+# 提交版本变更
+git add installer/package.json
+git commit -m "release: installer 0.x.y"
+
+# 发布（npm 启用了 2FA 会要求 OTP）
+cd installer
+npm publish --access public --otp=<验证码>
+
+# 验证
+npm view railforge-workflow version
+```
+
+### 步骤 6：推送到远端
+
+```bash
+git push origin <branch>
+```
+
+### 步骤 7：验证
+
+```bash
+# GitHub Release
+gh release view railforge-preset
+
+# npm
+npx railforge-workflow@latest help
+
+# 本地二进制
+~/.codex/bin/railforge --version
+~/.codex/bin/railforge spec-init
+```
+
+---
+
+## 五、版本号管理
+
+| 文件 | 字段 | 说明 |
+|------|------|------|
+| `railforge/__init__.py` | `__version__` | Python 核心版本 |
+| `pyproject.toml` | `project.version` | 需与上面保持一致 |
+| `installer/package.json` | `version` | npm 安装器版本（独立递增） |
+| `installer/package.json` | `railforgeBinaryVersion` | 安装器下载的二进制版本（需与 Python 版本匹配） |
+
+三条规则：
+1. Python 核心版本变化时，`__init__.py` 和 `pyproject.toml` 必须同步
+2. 安装器版本独立于 Python 版本递增
+3. 安装器发布新版时，`railforgeBinaryVersion` 需指向对应的 GitHub Release 二进制版本
+
+---
+
+## 六、目录和文件参考
 
 ```
 项目根/
@@ -198,9 +284,12 @@ npx railforge-workflow                  # 安装/更新
   pyproject.toml                 # project.version
   installer/package.json         # version + railforgeBinaryVersion
   scripts/build_binaries.py      # 构建脚本
-  .github/workflows/build-binaries.yml  # CI 构建
+  .github/workflows/build-binaries.yml  # CI 构建（tag 触发）
   railforge-darwin-arm64.spec    # macOS arm64 PyInstaller spec
   railforge-codeagent-darwin-arm64.spec
   dist/                          # 构建产出（git ignored）
   build/                         # 构建中间文件（git ignored）
+  CHANGELOG.md                   # 版本更新日志
+  docs/guide/release-notes.md    # 发布说明
+  docs/guide/npm-publish-checklist.md  # npm 发布检查清单
 ```
