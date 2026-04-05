@@ -8,7 +8,21 @@ import { MCP_GROUPS } from './mcp.mjs'
 
 const RAILFORGE_AGENTS_START = '<!-- RAILFORGE-INSTALLER-START -->'
 const RAILFORGE_AGENTS_END = '<!-- RAILFORGE-INSTALLER-END -->'
-const RAILFORGE_MCP_IDS = ['Context7', 'Playwright', 'grok-search']
+const RAILFORGE_MCP_IDS = ['ace-tool', 'ace-tool-rs', 'fast-context', 'contextweaver', 'Context7', 'Playwright', 'mcp-deepwiki', 'exa', 'grok-search']
+const GROK_SEARCH_RULE_NAME = 'ccg-grok-search.md'
+const FAST_CONTEXT_RULE_NAME = 'ccg-fast-context.md'
+const FAST_CONTEXT_MARKER_START = '<!-- RAILFORGE-FAST-CONTEXT-START -->'
+const FAST_CONTEXT_MARKER_END = '<!-- RAILFORGE-FAST-CONTEXT-END -->'
+const OUTPUT_STYLE_TEMPLATES = {
+  'engineer-professional': '# engineer-professional\n\nUse a concise, professional engineering tone.\n',
+  'nekomata-engineer': '# nekomata-engineer\n\nUse a warm but technically precise cat-eared engineer tone.\n',
+  'laowang-engineer': '# laowang-engineer\n\nUse a direct, practical, senior engineer tone.\n',
+  'ojousama-engineer': '# ojousama-engineer\n\nUse a precise but stylized noble-engineer tone.\n',
+  'abyss-cultivator': '# abyss-cultivator\n\nUse a dramatic, dense, high-signal technical narration style.\n',
+  'abyss-concise': '# abyss-concise\n\nUse a terse, high-density technical style.\n',
+  'abyss-command': '# abyss-command\n\nUse a command-like, operationally focused style.\n',
+  'abyss-ritual': '# abyss-ritual\n\nUse a ritualized but still technically accurate style.\n',
+}
 
 const SKILL_CONTENT = {
   'rf-spec-init': `---
@@ -371,7 +385,6 @@ function defaultMcpConfig() {
       Context7: {
         command: 'npx',
         args: ['-y', '@upstash/context7-mcp@latest'],
-        startup_timeout_sec: 30,
       },
       Playwright: {
         command: 'npx',
@@ -386,6 +399,89 @@ function defaultMcpConfig() {
   }
 }
 
+const GROK_SEARCH_PROMPT = `## 0. Language and Format Standards
+
+- Interaction language between tools/models should be English; user-facing output should be Chinese.
+- Use standard Markdown and keep answers concise, evidence-oriented, and explicit about uncertainty.
+
+## 1. Search and Evidence Standards
+
+- Use the \`mcp__grok-search\` tool for web searches when up-to-date external information matters.
+- Treat search output as evidence to evaluate, not truth by default.
+- Important factual claims should be cross-checked against multiple independent sources when possible.
+- If sources conflict, explain the conflict and identify the stronger evidence.
+
+## 2. Reasoning Standards
+
+- Be direct and information-dense.
+- State assumptions, scope limits, and uncertainty explicitly.
+- Challenge flawed premises with evidence instead of silently accepting them.
+`
+
+const FAST_CONTEXT_PROMPT_PRIMARY = `# fast-context MCP 工具使用指南
+
+## 核心原则
+
+任何需要理解代码上下文、探索性搜索、或自然语言定位代码的场景，优先使用 \`mcp__fast-context__fast_context_search\`。
+`
+
+const FAST_CONTEXT_PROMPT_AUXILIARY = `# fast-context MCP 工具使用指南（辅助模式）
+
+## 核心原则
+
+主检索工具为 ace-tool。只有当 ace-tool 无法满足语义搜索需求时，才使用 \`mcp__fast-context__fast_context_search\` 作为补充。
+`
+
+function grokSearchServerConfig(env = {}) {
+  const config = {
+    command: 'npx',
+    args: ['-y', 'github:GuDaStudio/GrokSearch@grok-with-tavily', 'grok-search'],
+  }
+  const filteredEnv = Object.fromEntries(
+    Object.entries(env).filter(([, value]) => value !== null && value !== undefined && value !== ''),
+  )
+  if (Object.keys(filteredEnv).length > 0) {
+    config.env = filteredEnv
+  }
+  return config
+}
+
+function aceToolServerConfig({ baseUrl = '', token = '' } = {}) {
+  const args = ['-y', 'ace-tool@latest']
+  if (baseUrl) args.push('--base-url', baseUrl)
+  if (token) args.push('--token', token)
+  return { command: 'npx', args }
+}
+
+function aceToolRsServerConfig({ baseUrl = '', token = '' } = {}) {
+  const args = ['ace-tool-rs']
+  if (baseUrl) args.push('--base-url', baseUrl)
+  if (token) args.push('--token', token)
+  return { command: 'npx', args, env: { RUST_LOG: 'info' } }
+}
+
+function fastContextServerConfig({ apiKey = '', includeSnippets = false } = {}) {
+  const env = {}
+  if (apiKey) env.WINDSURF_API_KEY = apiKey
+  if (includeSnippets) env.FC_INCLUDE_SNIPPETS = 'true'
+  return {
+    command: 'npx',
+    args: ['-y', '--prefer-online', 'fast-context-mcp@latest'],
+    ...(Object.keys(env).length > 0 ? { env } : {}),
+  }
+}
+
+function contextWeaverServerConfig() {
+  return { command: 'contextweaver', args: ['mcp'] }
+}
+
+function genericServerConfig(command, args, env = {}) {
+  const filteredEnv = Object.fromEntries(
+    Object.entries(env).filter(([, value]) => value !== null && value !== undefined && value !== ''),
+  )
+  return { command, args, ...(Object.keys(filteredEnv).length > 0 ? { env: filteredEnv } : {}) }
+}
+
 function renderCodexToml(mcpConfig) {
   const servers = mcpConfig.mcpServers || {}
   const lines = ['model_reasoning_effort = "high"', 'sandbox_mode = "workspace-write"', '']
@@ -394,9 +490,6 @@ function renderCodexToml(mcpConfig) {
     lines.push(`command = "${config.command}"`)
     if (config.args?.length) {
       lines.push(`args = [${config.args.map((item) => `"${item}"`).join(', ')}]`)
-    }
-    if (config.startup_timeout_sec) {
-      lines.push(`startup_timeout_sec = ${config.startup_timeout_sec}`)
     }
     if (config.tool_timeout_sec) {
       lines.push(`tool_timeout_sec = ${config.tool_timeout_sec}`)
@@ -424,6 +517,7 @@ function resolveInstallPaths(targetDir) {
     statePath: path.join(railforgeRoot, 'installer-state.json'),
     binaryStatePath: path.join(railforgeRoot, 'binaries.json'),
     claudeMcpPath: path.join(homeRoot, '.claude', '.mcp.json'),
+    claudeSettingsPath: path.join(homeRoot, '.claude', 'settings.json'),
     geminiSettingsPath: path.join(homeRoot, '.gemini', 'settings.json'),
     railforgeBinPath: path.join(codexRoot, 'bin', installedBinaryName('railforge')),
     codeagentBinPath: path.join(codexRoot, 'bin', installedBinaryName('railforge-codeagent')),
@@ -441,6 +535,33 @@ async function readJsonIfExists(filePath, fallback = {}) {
     return { payload: structuredClone(fallback), createdFile: true }
   }
   return { payload: JSON.parse(await fs.readFile(filePath, 'utf8')), createdFile: false }
+}
+
+function timestampForBackup() {
+  return new Date().toISOString().replaceAll(':', '-').replaceAll('.', '-')
+}
+
+async function backupFileIfExists(filePath, backupDir, prefix) {
+  if (!(await fileExists(filePath))) {
+    return null
+  }
+  await ensureDir(backupDir)
+  const backupPath = path.join(backupDir, `${prefix}-${timestampForBackup()}.json`)
+  await fs.copyFile(filePath, backupPath)
+  return backupPath
+}
+
+async function upsertMarkedBlockWithMarkers(filePath, block, startMarker, endMarker) {
+  await ensureDir(path.dirname(filePath))
+  const createdFile = !(await fileExists(filePath))
+  const content = createdFile ? '' : await fs.readFile(filePath, 'utf8')
+  const markerRegex = new RegExp(`\\n?${escapeRegex(startMarker)}[\\s\\S]*?${escapeRegex(endMarker)}\\n?`, 'm')
+  const markedBlock = `${startMarker}\n${block}\n${endMarker}\n`
+  const next = markerRegex.test(content)
+    ? content.replace(markerRegex, `\n${markedBlock}`)
+    : (content.trimEnd() ? `${content.trimEnd()}\n\n${markedBlock}` : markedBlock)
+  await fs.writeFile(filePath, next, 'utf8')
+  return { path: filePath, createdFile, type: 'marked_block' }
 }
 
 async function loadInstallerState(statePath) {
@@ -645,8 +766,11 @@ async function patchCodexConfig(filePath, mcpConfig) {
     if (config.args?.length) {
       bodyLines.push(`args = [${config.args.map(item => `"${item}"`).join(', ')}]`)
     }
-    if (config.startup_timeout_sec) {
-      bodyLines.push(`startup_timeout_sec = ${config.startup_timeout_sec}`)
+    if (config.env && typeof config.env === 'object' && Object.keys(config.env).length > 0) {
+      const envEntries = Object.entries(config.env)
+        .map(([key, value]) => `${key} = "${String(value).replaceAll('"', '\\"')}"`)
+        .join(', ')
+      bodyLines.push(`env = { ${envEntries} }`)
     }
     if (config.tool_timeout_sec) {
       bodyLines.push(`tool_timeout_sec = ${config.tool_timeout_sec}`)
@@ -885,6 +1009,285 @@ async function writeMirrorFiles(targetDir, mcpConfig) {
     gemini: await mergeMcpServersFile(paths.geminiSettingsPath, mcpConfig.mcpServers || {}, RAILFORGE_MCP_IDS),
     mirrors: [paths.codexConfigPath, paths.geminiSettingsPath, paths.claudeMcpPath],
   }
+}
+
+async function writeGrokSearchRulesFile(targetDir) {
+  const rulesDir = path.join(resolveInstallPaths(targetDir).homeRoot, '.claude', 'rules')
+  await ensureDir(rulesDir)
+  const rulePath = path.join(rulesDir, GROK_SEARCH_RULE_NAME)
+  await fs.writeFile(rulePath, GROK_SEARCH_PROMPT, 'utf8')
+  return rulePath
+}
+
+async function loadOrDefaultMcpConfig(catalogPath) {
+  if (await fileExists(catalogPath)) {
+    return JSON.parse(await fs.readFile(catalogPath, 'utf8'))
+  }
+  return defaultMcpConfig()
+}
+
+async function writeFastContextPromptFiles(targetDir, { auxiliaryMode = false } = {}) {
+  const paths = resolveInstallPaths(targetDir)
+  const promptContent = auxiliaryMode ? FAST_CONTEXT_PROMPT_AUXILIARY : FAST_CONTEXT_PROMPT_PRIMARY
+
+  const claudeRulesDir = path.join(paths.homeRoot, '.claude', 'rules')
+  await ensureDir(claudeRulesDir)
+  const claudeRulePath = path.join(claudeRulesDir, FAST_CONTEXT_RULE_NAME)
+  await fs.writeFile(claudeRulePath, promptContent, 'utf8')
+
+  const codexAgentsPath = path.join(paths.homeRoot, '.codex', 'AGENTS.md')
+  const geminiInstructionsPath = path.join(paths.homeRoot, '.gemini', 'GEMINI.md')
+  await upsertMarkedBlockWithMarkers(codexAgentsPath, promptContent, FAST_CONTEXT_MARKER_START, FAST_CONTEXT_MARKER_END)
+  await upsertMarkedBlockWithMarkers(geminiInstructionsPath, promptContent, FAST_CONTEXT_MARKER_START, FAST_CONTEXT_MARKER_END)
+
+  return {
+    claudeRulePath,
+    codexAgentsPath,
+    geminiInstructionsPath,
+  }
+}
+
+async function configureClaudeSettings(targetDir, mutator) {
+  const paths = resolveInstallPaths(targetDir)
+  await ensureDir(path.dirname(paths.claudeSettingsPath))
+  const { payload } = await readJsonIfExists(paths.claudeSettingsPath, {})
+  const settings = payload && typeof payload === 'object' ? payload : {}
+  mutator(settings)
+  await fs.writeFile(paths.claudeSettingsPath, JSON.stringify(settings, null, 2), 'utf8')
+  return paths.claudeSettingsPath
+}
+
+export async function configureApiSettings(targetDir, options = {}) {
+  const settingsPath = await configureClaudeSettings(targetDir, (settings) => {
+    if (!settings.env) settings.env = {}
+    if (options.provider === 'official') {
+      delete settings.env.ANTHROPIC_BASE_URL
+      delete settings.env.ANTHROPIC_AUTH_TOKEN
+      delete settings.env.ANTHROPIC_API_KEY
+    }
+    else if (options.provider === '302ai') {
+      settings.env.ANTHROPIC_BASE_URL = 'https://api.302.ai/cc'
+      settings.env.ANTHROPIC_AUTH_TOKEN = options.apiKey || ''
+      delete settings.env.ANTHROPIC_API_KEY
+    }
+    else if (options.provider === 'custom') {
+      settings.env.ANTHROPIC_BASE_URL = options.apiUrl || ''
+      settings.env.ANTHROPIC_AUTH_TOKEN = options.apiKey || ''
+      delete settings.env.ANTHROPIC_API_KEY
+    }
+
+    Object.assign(settings.env, {
+      DISABLE_TELEMETRY: '1',
+      DISABLE_ERROR_REPORTING: '1',
+      CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
+      CLAUDE_CODE_ATTRIBUTION_HEADER: '0',
+      MCP_TIMEOUT: '60000',
+      API_TIMEOUT_MS: '3000000',
+      BASH_DEFAULT_TIMEOUT_MS: '600000',
+      BASH_MAX_TIMEOUT_MS: '3600000',
+      CODEX_TIMEOUT: '7200',
+    })
+  })
+
+  return {
+    action: 'config-api',
+    status: 'written',
+    file: settingsPath,
+    provider: options.provider || 'official',
+  }
+}
+
+export async function configureOutputStyle(targetDir, style = 'default') {
+  const paths = resolveInstallPaths(targetDir)
+  const settingsPath = await configureClaudeSettings(targetDir, (settings) => {
+    if (style === 'default') {
+      delete settings.outputStyle
+    }
+    else {
+      settings.outputStyle = style
+    }
+  })
+
+  let styleFile = null
+  if (style !== 'default') {
+    const outputStylesDir = path.join(paths.homeRoot, '.claude', 'output-styles')
+    await ensureDir(outputStylesDir)
+    styleFile = path.join(outputStylesDir, `${style}.md`)
+    await fs.writeFile(styleFile, OUTPUT_STYLE_TEMPLATES[style] || `# ${style}\n\nUse the ${style} response style.\n`, 'utf8')
+  }
+
+  return {
+    action: 'config-style',
+    status: 'written',
+    file: settingsPath,
+    style,
+    styleFile,
+  }
+}
+
+async function writeContextWeaverEnvFile(targetDir, siliconflowApiKey) {
+  const paths = resolveInstallPaths(targetDir)
+  const contextWeaverDir = path.join(paths.homeRoot, '.contextweaver')
+  await ensureDir(contextWeaverDir)
+  const envPath = path.join(contextWeaverDir, '.env')
+  const envContent = `# ContextWeaver 配置 (由 RailForge 自动生成)
+
+EMBEDDINGS_API_KEY=${siliconflowApiKey}
+EMBEDDINGS_BASE_URL=https://api.siliconflow.cn/v1/embeddings
+EMBEDDINGS_MODEL=Qwen/Qwen3-Embedding-8B
+EMBEDDINGS_MAX_CONCURRENCY=10
+EMBEDDINGS_DIMENSIONS=1024
+
+RERANK_API_KEY=${siliconflowApiKey}
+RERANK_BASE_URL=https://api.siliconflow.cn/v1/rerank
+RERANK_MODEL=Qwen/Qwen3-Reranker-8B
+RERANK_TOP_N=20
+`
+  await fs.writeFile(envPath, envContent, 'utf8')
+  return envPath
+}
+
+async function configureManagedMcp(targetDir, { id, serverConfig, backupClaude = false, extraFiles = {}, catalogName = null }) {
+  const paths = resolveInstallPaths(targetDir)
+  await ensureDir(paths.railforgeRoot)
+
+  const mcpConfig = await loadOrDefaultMcpConfig(paths.mcpCatalogPath)
+  mcpConfig.mcpServers[id] = serverConfig
+  await fs.writeFile(paths.mcpCatalogPath, JSON.stringify(mcpConfig, null, 2), 'utf8')
+
+  const backupPath = backupClaude
+    ? await backupFileIfExists(paths.claudeMcpPath, path.join(paths.homeRoot, '.claude', 'backup'), 'claude-config')
+    : null
+
+  const state = await loadInstallerState(paths.statePath)
+  const mirrorState = await writeMirrorFiles(targetDir, mcpConfig)
+  state.sharedPatches = {
+    ...(state.sharedPatches || {}),
+    codexConfig: mirrorState.codex,
+    claudeMcp: mirrorState.claude,
+    geminiSettings: mirrorState.gemini,
+  }
+  await saveInstallerState(paths.statePath, state)
+
+  return {
+    action: 'config-mcp',
+    tool: catalogName || id,
+    status: 'configured',
+    target: paths.codexRoot,
+    backupPath,
+    mirrors: mirrorState.mirrors,
+    extraFiles,
+  }
+}
+
+export async function configureGrokSearchMcp(targetDir, options = {}) {
+  const paths = resolveInstallPaths(targetDir)
+  await ensureDir(paths.railforgeRoot)
+
+  const env = {
+    GROK_API_URL: options.grokApiUrl || '',
+    GROK_API_KEY: options.grokApiKey || '',
+    TAVILY_API_KEY: options.tavilyApiKey || '',
+    FIRECRAWL_API_KEY: options.firecrawlApiKey || '',
+  }
+
+  const mcpConfig = await loadOrDefaultMcpConfig(paths.mcpCatalogPath)
+  mcpConfig.mcpServers['grok-search'] = grokSearchServerConfig(env)
+  await fs.writeFile(paths.mcpCatalogPath, JSON.stringify(mcpConfig, null, 2), 'utf8')
+
+  const backupPath = await backupFileIfExists(
+    paths.claudeMcpPath,
+    path.join(paths.homeRoot, '.claude', 'backup'),
+    'claude-config',
+  )
+
+  const state = await loadInstallerState(paths.statePath)
+  const mirrorState = await writeMirrorFiles(targetDir, mcpConfig)
+  state.sharedPatches = {
+    ...(state.sharedPatches || {}),
+    codexConfig: mirrorState.codex,
+    claudeMcp: mirrorState.claude,
+    geminiSettings: mirrorState.gemini,
+  }
+  await saveInstallerState(paths.statePath, state)
+
+  const rulePath = await writeGrokSearchRulesFile(targetDir)
+  const codexSynced = ['Context7', 'Playwright', 'grok-search'].map((item) => item.replace('Playwright', 'playwright'))
+  const geminiSynced = ['Context7', 'Playwright', 'grok-search'].map((item) =>
+    item.replace('Context7', 'context7').replace('Playwright', 'playwright'),
+  )
+
+  return {
+    action: 'config-mcp',
+    tool: 'grok-search',
+    status: 'configured',
+    target: paths.codexRoot,
+    backupPath,
+    rulePath,
+    mirrors: mirrorState.mirrors,
+    envKeys: Object.keys(grokSearchServerConfig(env).env || {}),
+    synced: [
+      `Codex(${codexSynced.join(',')})`,
+      `Gemini(${geminiSynced.join(',')})`,
+    ],
+  }
+}
+
+export async function configureAceToolMcp(targetDir, options = {}) {
+  return configureManagedMcp(targetDir, {
+    id: 'ace-tool',
+    serverConfig: aceToolServerConfig(options),
+    backupClaude: true,
+  })
+}
+
+export async function configureAceToolRsMcp(targetDir, options = {}) {
+  return configureManagedMcp(targetDir, {
+    id: 'ace-tool-rs',
+    serverConfig: aceToolRsServerConfig(options),
+    backupClaude: true,
+  })
+}
+
+export async function configureFastContextMcp(targetDir, options = {}) {
+  const promptFiles = await writeFastContextPromptFiles(targetDir, { auxiliaryMode: Boolean(options.auxiliaryMode) })
+  return configureManagedMcp(targetDir, {
+    id: 'fast-context',
+    serverConfig: fastContextServerConfig(options),
+    backupClaude: true,
+    extraFiles: promptFiles,
+    catalogName: 'fast-context',
+  })
+}
+
+export async function configureContextWeaverMcp(targetDir, options = {}) {
+  const envPath = await writeContextWeaverEnvFile(targetDir, options.siliconflowApiKey || '')
+  return configureManagedMcp(targetDir, {
+    id: 'contextweaver',
+    serverConfig: contextWeaverServerConfig(),
+    backupClaude: true,
+    extraFiles: { envPath },
+    catalogName: 'contextweaver',
+  })
+}
+
+export async function configureAuxiliaryMcp(targetDir, tool, options = {}) {
+  const definitions = {
+    context7: { id: 'Context7', config: genericServerConfig('npx', ['-y', '@upstash/context7-mcp@latest']) },
+    playwright: { id: 'Playwright', config: genericServerConfig('npx', ['-y', '@playwright/mcp@latest']) },
+    deepwiki: { id: 'mcp-deepwiki', config: genericServerConfig('npx', ['-y', 'mcp-deepwiki@latest']) },
+    exa: { id: 'exa', config: genericServerConfig('npx', ['-y', 'exa-mcp-server@latest'], { EXA_API_KEY: options.exaApiKey || '' }) },
+  }
+  const selected = definitions[tool]
+  if (!selected) {
+    throw new Error(`Unsupported auxiliary MCP: ${tool}`)
+  }
+  return configureManagedMcp(targetDir, {
+    id: selected.id,
+    serverConfig: selected.config,
+    backupClaude: true,
+    catalogName: tool,
+  })
 }
 
 function buildModelsYaml({
