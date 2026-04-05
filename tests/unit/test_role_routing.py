@@ -1,9 +1,6 @@
 import pytest
 
-from railforge.adapters.claude_cli_adapter import ClaudeCliSpecialistAdapter
-from railforge.adapters.codex_cli_adapter import CodexCliLeadWriterAdapter
-from railforge.adapters.gemini_cli_adapter import GeminiCliSpecialistAdapter
-from railforge.adapters.role_router import RoleRouter
+from railforge.providers import ClaudeCliSpecialistAdapter, CodexCliLeadWriterAdapter, GeminiCliSpecialistAdapter, RoleRouter
 
 
 def test_role_router_maps_expected_backends() -> None:
@@ -19,6 +16,14 @@ def test_role_router_rejects_unknown_role() -> None:
 
     with pytest.raises(KeyError):
         router.driver_for_role("unknown_role")
+
+
+def test_role_router_exposes_role_policy() -> None:
+    router = RoleRouter()
+
+    assert router.read_only_for_role("backend_specialist") is True
+    assert router.allowed_tools_for_role("frontend_specialist") == ("shell", "playwright", "search")
+    assert ".railforge/runtime/runs/" in router.write_roots_for_role("lead_writer")
 
 
 @pytest.mark.parametrize(
@@ -44,3 +49,4 @@ def test_cli_adapters_use_codeagent_wrapper(adapter, role, backend) -> None:
     assert backend in command
     assert "/tmp/railforge" in command
     assert result.metadata["invocation"]["role"] == role
+    assert result.metadata["invocation"]["payload"]["role_policy"]["backend"] == backend

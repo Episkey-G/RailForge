@@ -9,7 +9,13 @@ from railforge.planner.planning_contract import PlanningContract
 def _classify_requirement(requirement: str) -> Tuple[str, str, List[str], List[str], str]:
     lowered = requirement.lower()
     if any(token in requirement for token in ["测试", "验证", "回归", "QA"]) or "test" in lowered:
-        return ("verification", "补齐验证", ["tests/", ".railforge/tasks/"], ["pytest tests/test_regression.py"], "medium")
+        return (
+            "verification",
+            "补齐验证",
+            ["tests/", ".railforge/runtime/runs/"],
+            ["pytest tests/test_regression.py"],
+            "medium",
+        )
     if any(token in requirement for token in ["前端", "页面", "UI", "交互", "文案", "提示"]) or "frontend" in lowered:
         return (
             "frontend",

@@ -5,6 +5,7 @@ import pytest
 from railforge.adapters.base import AdapterResult
 from railforge.core.models import ContractSpec, RunMeta, TaskItem, WorkspaceLayout
 from railforge.core.enums import RunState
+from railforge.artifacts.store import ArtifactStore
 from railforge.execution.backend_specialist import BackendSpecialistService
 from railforge.execution.codex_writer import CodexWriterService
 from railforge.execution.frontend_specialist import FrontendSpecialistService
@@ -66,10 +67,13 @@ def test_workspace_lock_rejects_second_owner(tmp_path: Path) -> None:
 def test_execution_services_forward_expected_context(tmp_path: Path) -> None:
     adapter = StubModelAdapter()
     layout = WorkspaceLayout(tmp_path)
+    run_meta = RunMeta(run_id="run-1", state=RunState.IMPLEMENTING, current_task_id="T-001")
+    store = ArtifactStore(layout)
+    store.init_workspace()
+    store.save_run_state(run_meta)
     layout.ensure("T-001")
     task = _task()
     contract = _contract()
-    run_meta = RunMeta(run_id="run-1", state=RunState.IMPLEMENTING, current_task_id="T-001")
 
     codex = CodexWriterService(adapter)
     backend = BackendSpecialistService(adapter)
@@ -77,11 +81,16 @@ def test_execution_services_forward_expected_context(tmp_path: Path) -> None:
 
     codex.execute(layout=layout, task=task, contract=contract, run_meta=run_meta)
     backend.review(layout=layout, task=task, contract=contract, qa_report=None)
-    frontend.review(layout=layout, task=task, contract=contract, qa_report=None)
+    frontend_result = frontend.review(layout=layout, task=task, contract=contract, qa_report=None)
 
     assert len(adapter.calls) == 3
-    assert adapter.calls[0]["writable_paths"] == ["backend/", "tests/", ".railforge/execution/tasks/T-001/"]
+    assert adapter.calls[0]["writable_paths"] == ["backend/", "tests/", ".railforge/runtime/runs/run-1/tasks/T-001/"]
     assert adapter.calls[1]["writable_paths"] == [
-        ".railforge/execution/tasks/T-001/reviews/",
-        ".railforge/execution/tasks/T-001/proposals/",
+        ".railforge/runtime/reviews/run-1/T-001/",
+        ".railforge/runtime/proposals/run-1/T-001/",
     ]
+    assert adapter.calls[2]["writable_paths"] == [
+        ".railforge/runtime/reviews/run-1/T-001/",
+        ".railforge/runtime/proposals/run-1/T-001/",
+    ]
+    assert frontend_result.summary == "ok"

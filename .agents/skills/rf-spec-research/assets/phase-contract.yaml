@@ -1,0 +1,20 @@
+phase: spec-research
+required_inputs:
+  - user request
+  - repository constraints
+  - previous answers
+expected_outputs:
+  - openspec proposal
+  - product spec draft
+  - unresolved questions
+  - decision candidates
+blockers:
+  - unresolved blocking questions
+  - missing repository context
+allowed_actions:
+  - research
+  - constraint extraction
+  - question drafting
+disallowed_actions:
+  - implementation
+  - backlog execution

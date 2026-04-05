@@ -1,0 +1,13 @@
+phase: status
+required_inputs:
+  - runtime state
+expected_outputs:
+  - current phase
+  - blockers
+  - next action
+blockers:
+  - missing runtime state
+allowed_actions:
+  - read-only inspection
+disallowed_actions:
+  - mutation

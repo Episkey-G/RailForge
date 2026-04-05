@@ -1,0 +1,26 @@
+{
+  "enhanced_request": "string, enriched requirement summary for downstream stages",
+  "acceptance_criteria": ["list of concrete, testable behaviors"],
+  "constraints": ["list of hard or soft constraints discovered from the request and codebase"],
+  "assumptions": ["list of explicit assumptions that are safe to carry forward"],
+  "resolved_by_default": ["list of details the model decided can proceed without asking the user"],
+  "open_questions": [
+    {
+      "id": "optional stable identifier",
+      "prompt": "question shown to the user",
+      "category": "clarification|timezone|api_contract|copy|etc",
+      "default": "recommended default if user wants to move faster",
+      "blocking_reason": "why this blocks planning/execution",
+      "source": "what ambiguity or context triggered the question"
+    }
+  ],
+  "decisions": [
+    {
+      "id": "optional stable identifier",
+      "topic": "decision point title",
+      "options": "recommended options or comparison frame",
+      "source": "which ambiguity or risk this decision comes from"
+    }
+  ],
+  "can_proceed": "boolean, true only when zero blocking ambiguity remains for this phase"
+}

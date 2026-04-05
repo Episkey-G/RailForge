@@ -88,3 +88,4 @@ class HarnessServices:
     playwright: PlaywrightAdapter
     backend_evaluator: Optional[SpecialistAdapter] = None
     frontend_evaluator: Optional[SpecialistAdapter] = None
+    clarification_analyst: Optional[Any] = None

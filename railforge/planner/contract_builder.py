@@ -2,6 +2,7 @@ from typing import Optional
 
 from railforge.core.models import ContractSpec, TaskItem
 from railforge.planner.planning_contract import PlanningContract, task_scope_mismatches
+from railforge.providers.role_profiles import DEFAULT_ROLE_PROFILES
 
 
 _KNOWN_SURFACES = [
@@ -37,38 +38,56 @@ def _non_scope(task: TaskItem) -> list[str]:
     return items
 
 
-def _writeback_requirements(task: TaskItem) -> dict[str, object]:
+def _writeback_requirements(task: TaskItem, run_id: str) -> dict[str, object]:
     return {
-        "result_path": ".railforge/runtime/hosted_execution_result.json",
+        "result_path": f".railforge/runtime/execution_results/{run_id}/{task.id}/hosted_codex.json",
         "required_fields": ["task_id", "summary", "changed_files", "verification_notes"],
         "optional_fields": ["follow_up_notes", "blockers"],
-        "task_trace_path": f".railforge/execution/tasks/{task.id}/traces/hosted_execution_result.json",
+        "task_trace_path": f".railforge/runtime/traces/{run_id}/{task.id}/hosted_execution_result.json",
     }
 
 
-def _role_boundaries(task: TaskItem) -> dict[str, dict[str, object]]:
-    task_root = f".railforge/execution/tasks/{task.id}/"
-    review_paths = [f"{task_root}reviews/", f"{task_root}proposals/"]
+def _role_boundaries(task: TaskItem, run_id: str) -> dict[str, dict[str, object]]:
+    task_root = f".railforge/runtime/runs/{run_id}/tasks/{task.id}/"
+    review_paths = [
+        f".railforge/runtime/reviews/{run_id}/{task.id}/",
+        f".railforge/runtime/proposals/{run_id}/{task.id}/",
+    ]
     return {
         "lead_writer": {
             "read_only": False,
-            "responsibility": "在 allowed_paths 内完成代码实现与必要工件回写",
+            "responsibility": "在 allowed_paths 内完成代码实现，并仅向 runtime execution 目录回写协议工件",
             "allowed_paths": list(task.allowed_paths) + [task_root],
+            "allowed_tools": list(DEFAULT_ROLE_PROFILES["lead_writer"].allowed_tools),
         },
         "backend_specialist": {
             "read_only": True,
-            "responsibility": "提供后端只读审查与补丁建议，不直接修改业务代码",
+            "responsibility": "提供后端只读审查与补丁建议，只能写 review/proposal 工件",
             "allowed_paths": review_paths,
+            "allowed_tools": list(DEFAULT_ROLE_PROFILES["backend_specialist"].allowed_tools),
         },
         "frontend_specialist": {
             "read_only": True,
-            "responsibility": "提供前端只读审查与补丁建议，不直接修改业务代码",
+            "responsibility": "提供前端只读审查与补丁建议，只能写 review/proposal 工件",
             "allowed_paths": review_paths,
+            "allowed_tools": list(DEFAULT_ROLE_PROFILES["frontend_specialist"].allowed_tools),
+        },
+        "backend_evaluator": {
+            "read_only": True,
+            "responsibility": "提供后端合规评估，只能写 review/proposal 工件",
+            "allowed_paths": review_paths,
+            "allowed_tools": list(DEFAULT_ROLE_PROFILES["backend_evaluator"].allowed_tools),
+        },
+        "frontend_evaluator": {
+            "read_only": True,
+            "responsibility": "提供前端合规评估，只能写 review/proposal 工件",
+            "allowed_paths": review_paths,
+            "allowed_tools": list(DEFAULT_ROLE_PROFILES["frontend_evaluator"].allowed_tools),
         },
     }
 
 
-def build_contract(task: TaskItem, planning_contract: Optional[PlanningContract] = None) -> ContractSpec:
+def build_contract(task: TaskItem, planning_contract: Optional[PlanningContract] = None, run_id: str = "active-run") -> ContractSpec:
     scope = [task.title]
     if planning_contract:
         scope.extend(item for item in planning_contract.deliverables if item not in scope)
@@ -91,6 +110,6 @@ def build_contract(task: TaskItem, planning_contract: Optional[PlanningContract]
         rollback=rollback,
         done_definition=done_definition,
         task_context=_task_context(task, planning_contract=planning_contract),
-        writeback_requirements=_writeback_requirements(task),
-        role_boundaries=_role_boundaries(task),
+        writeback_requirements=_writeback_requirements(task, run_id),
+        role_boundaries=_role_boundaries(task, run_id),
     )

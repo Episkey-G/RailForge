@@ -1,0 +1,18 @@
+phase: spec-review
+required_inputs:
+  - task contracts
+  - qa report
+  - runtime traces
+  - review rubric
+expected_outputs:
+  - dual-model review artifacts
+  - aggregate verdict
+  - final review when change is complete
+blockers:
+  - missing qa report
+  - missing review context
+allowed_actions:
+  - compliance review
+  - verdict aggregation
+disallowed_actions:
+  - direct source-code edits

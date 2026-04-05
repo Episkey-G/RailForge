@@ -1,0 +1,21 @@
+phase: spec-plan
+required_inputs:
+  - approved spec
+  - resolved research blockers
+  - repository constraints
+expected_outputs:
+  - openspec design
+  - openspec tasks
+  - spec requirements
+  - planning contract draft
+  - executable backlog
+blockers:
+  - unresolved research questions
+  - missing spec approval
+  - scope mismatch with planning contract
+allowed_actions:
+  - planning
+  - contract drafting
+  - task decomposition
+disallowed_actions:
+  - source-code changes

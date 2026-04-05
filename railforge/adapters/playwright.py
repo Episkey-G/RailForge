@@ -1,4 +1,3 @@
-class NoopPlaywrightAdapter:
-    def summarize(self, workspace):
-        return {"status": "skipped", "summary": "playwright adapter not configured"}
+from railforge.integrations.playwright import NoopPlaywrightAdapter
 
+__all__ = ["NoopPlaywrightAdapter"]

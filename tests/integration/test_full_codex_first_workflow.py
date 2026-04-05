@@ -75,6 +75,12 @@ def test_full_codex_first_workflow_blocks_for_spec_then_executes(tmp_path: Path)
         text=True,
         check=False,
     )
+    subprocess.run(
+        [sys.executable, "-m", "railforge", "approve", "--workspace", str(workspace), "--target", "contract"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
 
     executed = subprocess.run(
         [sys.executable, "-m", "railforge", "execute", "--workspace", str(workspace)],
@@ -84,8 +90,8 @@ def test_full_codex_first_workflow_blocks_for_spec_then_executes(tmp_path: Path)
     )
     assert executed.returncode == 0
     assert executed.stdout.strip().endswith("DONE")
-    backlog = yaml.safe_load((workspace / ".railforge" / "planning" / "backlog.yaml").read_text(encoding="utf-8"))
-    final_review = json.loads((workspace / ".railforge" / "execution" / "final_review.json").read_text(encoding="utf-8"))
+    backlog = yaml.safe_load((workspace / "docs" / "exec-plans" / "active" / "backlog.yaml").read_text(encoding="utf-8"))
+    final_review = json.loads((workspace / "docs" / "quality" / "active" / "final_review.json").read_text(encoding="utf-8"))
     assert all(item["status"] == "done" for item in backlog["items"])
     assert final_review["scope"] == "change"
     assert final_review["status"] == "approved"

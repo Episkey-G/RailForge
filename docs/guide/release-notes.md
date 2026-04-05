@@ -3,7 +3,7 @@
 ## 版本
 
 - RailForge Python core: `0.1.7`
-- `railforge-workflow` installer: `0.1.7`
+- `railforge-workflow` installer: `0.1.8`
 
 ## 本次发布内容
 
@@ -41,12 +41,20 @@
 - Python 状态机通过 `prepare-execution / record-execution` 与当前 Codex 主会话协作
 - `Claude / Gemini` 继续由 `railforge.codeagent` 驱动
 
-### 3. OpenSpec 与 `.railforge` 双真源
+### 3. Repo Truth 与 Runtime 分层
 
 - OpenSpec 负责 proposal / design / tasks / spec
-- `.railforge/` 负责 runtime state / backlog / approvals / qa / checkpoints
+- `docs/product-specs/active/`、`docs/exec-plans/active/`、`docs/quality/active/` 负责长期知识真源
+- `.railforge/runtime/` 负责 runtime state / approvals / checkpoints / execution requests/results / traces / reviews / proposals / notes
 - `spec-review` 会把主动双模型审查回写到 task 级 `qa_report.json`
-- backlog 完成后会生成 change 级 `.railforge/execution/final_review.json`
+- backlog 完成后会生成 change 级 `docs/quality/active/final_review.json`
+
+### 3.1 Runtime Topology Realignment
+
+- runtime canonical layout 已锁定为 run-first、semantic-rooted
+- `run_id` 是 runtime 工件主键，`task_id` 只作为 run 下的子维度
+- 旧 `.railforge/execution/*`、`runtime/execution/tasks/*`、runtime 根 hosted execution 文件不再作为写入目标
+- legacy compatibility 只保留在 loader/read path，避免继续用兼容补丁维持错误 ownership
 
 ### 4. 安装器
 
@@ -71,7 +79,7 @@
 - `~/.codex/AGENTS.md`、`~/.codex/config.toml`、`~/.claude/.mcp.json`、`~/.gemini/settings.json` 改为增量写入与增量回滚
 - 默认 `npx railforge-workflow` 安装根改为用户主目录下的 `~/.codex`
 
-同时，`0.1.7` 延续并固化了安装器交互菜单修复：
+同时，`0.1.8` 延续并固化了安装器交互菜单修复：
 
 - 主菜单重新回到接近 CCG 的静态模板布局
 - 保留方向键交互，不再退回“输入编号或字母”
@@ -80,7 +88,7 @@
 - 方向键移动时不再重复重绘 banner
 - 菜单动作完成后，`按 Enter 返回主菜单` 会真正回到主菜单
 
-此外，`0.1.7` 已经接上跨平台二进制分发主路径：
+此外，当前 installer 仍对接既有跨平台二进制分发主路径：
 
 - 新增 `scripts/build_binaries.py`，为 `railforge` 与 `railforge-codeagent` 构建平台二进制
 - 新增 `.github/workflows/build-binaries.yml`，在 macOS / Linux / Windows 上构建并把资产上传到 GitHub Release
@@ -107,5 +115,5 @@
 
 ## 当前边界
 
-- `railforge-workflow` 已完成 `0.1.7` 发布前验证，等待或已执行 npm 发布
+- `railforge-workflow` 已完成 `0.1.8` 发布前验证，等待 npm 发布
 - 安装器已经可用，但与 CCG 的完整菜单深度和跨宿主自动化相比仍有继续迭代空间

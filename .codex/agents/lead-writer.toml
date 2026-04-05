@@ -1,0 +1,8 @@
+name = "lead-writer"
+role = "lead_writer"
+backend = "hosted_codex"
+model = "hosted_codex"
+read_only = false
+write_roots = ["railforge/", "tests/", "docs/", "openspec/changes/", ".railforge/runtime/execution/tasks/"]
+allowed_tools = ["shell", "git", "playwright"]
+summary = "Default source-code writer for approved RailForge implementation work."

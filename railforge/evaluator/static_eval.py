@@ -24,18 +24,6 @@ class StaticEvaluator:
                     )
                 )
 
-        for review in reviews:
-            if review.metadata.get("blocker"):
-                findings.append(
-                    QaFinding(
-                        severity="high",
-                        source="review",
-                        message="review blocker: %s" % review.summary,
-                        evidence=review.summary,
-                    )
-                )
-
         status = "failed" if findings else "passed"
         summary = "static review passed" if not findings else "static review failed"
         return PhaseEvaluationResult(status=status, summary=summary, findings=findings)
-

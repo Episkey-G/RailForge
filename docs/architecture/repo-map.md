@@ -8,7 +8,8 @@
 | `railforge/codeagent/` | External runner subsystem for `Claude / Gemini` and Codex fallback/headless execution. |
 | `.agents/skills/` | Codex CLI-first workflow entrypoints for research, planning, execution, review, resume, and status. |
 | `docs/architecture/` | Long-lived architecture notes and repository guidance. |
-| `.railforge/` | Runtime truth layer generated per workspace run. |
+| `.codex/` | Project-scoped Codex config, hooks, and role definitions. |
+| `.railforge/runtime/` | Runtime artifact layer generated per workspace run, keyed by semantic root and `run_id`. |
 | `tests/` | Unit and integration coverage for runtime behavior and workflow entrypoints. |
 | `README.md` | Project overview and recommended operating flow. |
 
@@ -26,5 +27,7 @@
 ## Notes
 
 - The formal repository keeps only source, tests, skills, and long-term documentation.
-- Runtime-generated product specs, backlogs, approvals, and checkpoints live under `.railforge/`.
+- Long-lived specs, plans, and quality artifacts live under `docs/` and `openspec/changes/`.
+- Runtime-generated approvals, checkpoints, execution requests/results, traces, reviews, proposals, and notes live under `.railforge/runtime/`.
+- Legacy runtime paths are compatibility read inputs only and are not canonical write destinations.
 - Development-process plans and temporary design artifacts stay in the outer workspace, not in the formal repository.

@@ -1,0 +1,15 @@
+phase: spec-init
+required_inputs:
+  - workspace path
+expected_outputs:
+  - openspec scaffold
+  - runtime configs
+  - codex integration artifacts
+blockers:
+  - missing toolchain
+allowed_actions:
+  - initialization
+  - environment checks
+disallowed_actions:
+  - planning
+  - implementation

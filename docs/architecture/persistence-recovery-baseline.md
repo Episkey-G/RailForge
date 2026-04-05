@@ -8,7 +8,7 @@
 2. harness-engineering 强调 repository knowledge is the system of record，也就是 system of record 必须落在仓库可见、可版本化、可重建的工件上。
 3. RailForge 当前采用双层真相：
    - OpenSpec 保存 change proposal / design / tasks / spec
-   - `.railforge/` 保存 runtime state / backlog / task / contract / approvals / qa / checkpoints
+   - `.railforge/runtime/` 保存 runtime state、approvals、execution requests/results、reviews、proposals、notes、checkpoints 与 traces
 
 ## 当前分层
 
@@ -26,14 +26,26 @@
 `WorkspaceLayout` 会确保以下目录存在：
 
 - `.railforge/runtime`
-- `.railforge/product`
-- `.railforge/planning`
-- `.railforge/execution`
+- `docs/product-specs/active`
+- `docs/exec-plans/active`
+- `docs/quality/active`
+- `.railforge/runtime/runs`
 - `.railforge/runtime/checkpoints`
 - `.railforge/runtime/approvals`
-- `.railforge/runtime/interrupts`
+- `.railforge/runtime/execution_requests`
+- `.railforge/runtime/execution_results`
+- `.railforge/runtime/traces`
+- `.railforge/runtime/reviews`
+- `.railforge/runtime/proposals`
+- `.railforge/runtime/failure_signatures`
+- `.railforge/runtime/notes`
 
 对应验证见 `tests/unit/test_truth_layer.py`。
+
+当前 canonical runtime 拓扑遵循两条规则：
+
+1. 语义根决定“工件是什么”
+2. `run_id` 决定“它属于哪次运行”，`task_id` 只在任务级工件里出现
 
 ### 2. 状态迁移后会写 checkpoint
 
@@ -64,7 +76,7 @@
 
 ### 已实现部分
 
-1. `RuntimeRecovery` 先从 `.railforge/runtime/run_state.json`、backlog 文件、task 工件和审批文件重建业务真相。
+1. `RuntimeRecovery` 先从 `.railforge/runtime/current_run.json`、`.railforge/runtime/runs/<run_id>/run_state.json`、backlog 文件、task 工件和审批文件重建业务真相。
 2. 当 `run_state.current_task_id` 缺失时，恢复层会优先用 backlog 的 `current_task` 或唯一 `in_progress` task 回填。
 3. 当 task 文件缺失但 backlog 仍保留任务定义时，恢复层会从 backlog 重新生成 task 工件。
 4. 恢复层会对比最新 checkpoint 与文件真相；若状态或 current task 不一致，则标记 `checkpoint_mismatch`，并丢弃过期 checkpoint 引用。
@@ -76,6 +88,13 @@
 - `langgraph_bridge.py` 现在会把 latest ref 和历史 ref 以文件形式落到 `.railforge/runtime/langgraph/`，从而提供可恢复、可跨进程复用的 checkpoint integration。
 - 如果环境里存在 LangGraph 依赖，bridge 会继续调用图运行并记录真实 `checkpoint_id`；若没有，则退回合成 ref，但仍会持久化到文件层。
 - 这意味着 LangGraph 已经不再只是完全内存内的占位层，但它依旧只是 checkpoint layer，而不是新的 system of record。
+
+## Legacy 兼容边界
+
+- loader 可以为旧 `.railforge/execution/*`、`runtime/execution/tasks/*`、runtime 根 hosted execution 文件提供只读 fallback
+- writer 只允许写 canonical run-first 路径
+- 恢复逻辑优先使用新路径，只有在新路径缺失时才读 legacy 工件
+- 兼容层存在的目的只是迁移与恢复，不是继续维持旧 ownership
 
 ## BLOCKED / FAILED 基线定义
 

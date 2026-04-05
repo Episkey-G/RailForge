@@ -145,7 +145,7 @@ def test_installer_config_mcp_writes_catalog(tmp_path: Path) -> None:
     assert 'model_reasoning_effort = "high"' in codex_config
     assert 'sandbox_mode = "workspace-write"' in codex_config
     assert "[mcp_servers.Context7]" in codex_config
-    assert "startup_timeout_sec = 30" in codex_config
+    assert "startup_timeout_sec" not in codex_config
 
 
 def test_installer_help_lists_core_commands() -> None:
@@ -219,6 +219,190 @@ def test_installer_probe_mcp_reports_configured_and_synced_files(tmp_path: Path)
     assert str(target / ".gemini" / "settings.json") in payload["mirrors"]
 
 
+def test_installer_config_mcp_grok_search_writes_rule_backup_and_env(tmp_path: Path) -> None:
+    target = tmp_path / "demo"
+    claude_mcp = target / ".claude" / ".mcp.json"
+    claude_mcp.parent.mkdir(parents=True, exist_ok=True)
+    claude_mcp.write_text('{"mcpServers":{"userTool":{"command":"user"}}}', encoding="utf-8")
+
+    result = run_installer(
+        "config-mcp",
+        "--target",
+        str(target),
+        "--tool",
+        "grok-search",
+        "--grok-api-url",
+        "https://example.invalid/v1",
+        "--tavily-api-key",
+        "tv-key",
+    )
+
+    assert result.returncode == 0
+    payload = json.loads(result.stdout)
+    assert payload["tool"] == "grok-search"
+    assert payload["status"] == "configured"
+    assert "TAVILY_API_KEY" in payload["envKeys"]
+    assert payload["backupPath"]
+    assert (target / ".claude" / "rules" / "ccg-grok-search.md").exists()
+
+    claude_payload = json.loads(claude_mcp.read_text(encoding="utf-8"))
+    assert claude_payload["mcpServers"]["grok-search"]["env"]["TAVILY_API_KEY"] == "tv-key"
+
+    gemini_payload = json.loads((target / ".gemini" / "settings.json").read_text(encoding="utf-8"))
+    assert gemini_payload["mcpServers"]["grok-search"]["env"]["TAVILY_API_KEY"] == "tv-key"
+
+    codex_config = (target / ".codex" / "config.toml").read_text(encoding="utf-8")
+    assert 'env = { GROK_API_URL = "https://example.invalid/v1", TAVILY_API_KEY = "tv-key" }' in codex_config
+
+
+def test_installer_config_mcp_ace_tool_variants_and_fast_context(tmp_path: Path) -> None:
+    target = tmp_path / "demo"
+
+    ace = run_installer(
+        "config-mcp",
+        "--target",
+        str(target),
+        "--tool",
+        "ace-tool",
+        "--base-url",
+        "https://acemcp.example",
+        "--token",
+        "ace-token",
+    )
+    assert ace.returncode == 0
+    ace_payload = json.loads(ace.stdout)
+    assert ace_payload["tool"] == "ace-tool"
+
+    ace_rs = run_installer(
+        "config-mcp",
+        "--target",
+        str(target),
+        "--tool",
+        "ace-tool-rs",
+        "--token",
+        "ace-rs-token",
+    )
+    assert ace_rs.returncode == 0
+    ace_rs_payload = json.loads(ace_rs.stdout)
+    assert ace_rs_payload["tool"] == "ace-tool-rs"
+
+    fast_context = run_installer(
+        "config-mcp",
+        "--target",
+        str(target),
+        "--tool",
+        "fast-context",
+        "--windsurf-api-key",
+        "windsurf-key",
+        "--include-snippets",
+    )
+    assert fast_context.returncode == 0
+    fast_payload = json.loads(fast_context.stdout)
+    assert fast_payload["tool"] == "fast-context"
+    assert (target / ".claude" / "rules" / "ccg-fast-context.md").exists()
+    assert (target / ".gemini" / "GEMINI.md").exists()
+
+    codex_config = (target / ".codex" / "config.toml").read_text(encoding="utf-8")
+    assert "[mcp_servers.ace-tool]" in codex_config
+    assert 'args = ["-y", "ace-tool@latest", "--base-url", "https://acemcp.example", "--token", "ace-token"]' in codex_config
+    assert "[mcp_servers.ace-tool-rs]" in codex_config
+    assert '[mcp_servers.fast-context]' in codex_config
+    assert 'env = { WINDSURF_API_KEY = "windsurf-key", FC_INCLUDE_SNIPPETS = "true" }' in codex_config
+
+
+def test_installer_config_mcp_contextweaver_and_auxiliary(tmp_path: Path) -> None:
+    target = tmp_path / "demo"
+
+    contextweaver = run_installer(
+        "config-mcp",
+        "--target",
+        str(target),
+        "--tool",
+        "contextweaver",
+        "--siliconflow-api-key",
+        "sf-key",
+    )
+    assert contextweaver.returncode == 0
+    cw_payload = json.loads(contextweaver.stdout)
+    assert cw_payload["tool"] == "contextweaver"
+    assert (target / ".contextweaver" / ".env").exists()
+
+    exa = run_installer(
+        "config-mcp",
+        "--target",
+        str(target),
+        "--tool",
+        "exa",
+        "--exa-api-key",
+        "exa-key",
+    )
+    assert exa.returncode == 0
+    exa_payload = json.loads(exa.stdout)
+    assert exa_payload["tool"] == "exa"
+
+    gemini_payload = json.loads((target / ".gemini" / "settings.json").read_text(encoding="utf-8"))
+    assert gemini_payload["mcpServers"]["exa"]["env"]["EXA_API_KEY"] == "exa-key"
+    assert gemini_payload["mcpServers"]["mcp-deepwiki"]["args"] == ["-y", "mcp-deepwiki@latest"] if "mcp-deepwiki" in gemini_payload["mcpServers"] else True
+
+
+def test_installer_config_api_writes_claude_collaboration_settings(tmp_path: Path) -> None:
+    target = tmp_path / "demo"
+
+    run_installer("init", "--target", str(target))
+
+    env = dict(DEFAULT_INSTALLER_ENV)
+    env["RAILFORGE_INSTALLER_EVAL"] = json.dumps(
+        {
+            "module": "commands",
+            "fn": "configureApiSettings",
+            "args": [str(target), {"provider": "custom", "apiUrl": "https://api.example.invalid", "apiKey": "secret"}],
+        }
+    )
+    result = subprocess.run(
+        ["node", str(INSTALLER)],
+        cwd=ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0
+
+    claude_settings = json.loads((target / ".claude" / "settings.json").read_text(encoding="utf-8"))
+    assert claude_settings["env"]["ANTHROPIC_BASE_URL"] == "https://api.example.invalid"
+    assert claude_settings["env"]["ANTHROPIC_AUTH_TOKEN"] == "secret"
+    assert claude_settings["env"]["CODEX_TIMEOUT"] == "7200"
+    assert "permissions" not in claude_settings or "allow" not in claude_settings.get("permissions", {})
+
+
+def test_installer_config_output_style_writes_style_template(tmp_path: Path) -> None:
+    target = tmp_path / "demo"
+
+    run_installer("init", "--target", str(target))
+
+    env = dict(DEFAULT_INSTALLER_ENV)
+    env["RAILFORGE_INSTALLER_EVAL"] = json.dumps(
+        {
+            "module": "commands",
+            "fn": "configureOutputStyle",
+            "args": [str(target), "engineer-professional"],
+        }
+    )
+    result = subprocess.run(
+        ["node", str(INSTALLER)],
+        cwd=ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0
+
+    claude_settings = json.loads((target / ".claude" / "settings.json").read_text(encoding="utf-8"))
+    assert claude_settings["outputStyle"] == "engineer-professional"
+    assert (target / ".claude" / "output-styles" / "engineer-professional.md").exists()
+
+
 def test_installer_user_level_to_project_init_and_uninstall_smoke(tmp_path: Path) -> None:
     home_root = tmp_path / "home"
     project_root = tmp_path / "project"
@@ -270,7 +454,7 @@ def test_installer_downloads_release_binaries_into_codex_bin(tmp_path: Path) -> 
 
     binary_template = """#!/bin/sh
 if [ "${1:-}" = "--version" ]; then
-  echo "0.1.7"
+  echo "0.1.8"
   exit 0
 fi
 echo "ok"
@@ -310,4 +494,4 @@ echo "ok"
     assert codeagent_bin.exists()
     assert payload["warnings"] == []
     assert {item["name"] for item in payload["binaries"]} == {"railforge", "railforge-codeagent"}
-    assert subprocess.run([str(railforge_bin), "--version"], capture_output=True, text=True, check=False).stdout.strip() == "0.1.7"
+    assert subprocess.run([str(railforge_bin), "--version"], capture_output=True, text=True, check=False).stdout.strip() == "0.1.8"

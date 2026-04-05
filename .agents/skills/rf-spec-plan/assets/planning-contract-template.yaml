@@ -1,0 +1,9 @@
+status: awaiting_approval
+write_scope:
+  allowed_paths: []
+deliverables: []
+locked_decisions: []
+approval:
+  required: true
+  target: contract
+  note: implementation must not begin before this contract is approved

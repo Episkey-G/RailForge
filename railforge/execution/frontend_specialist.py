@@ -25,10 +25,12 @@ def _annotate_result(result: AdapterResult, role: str, writable_paths: list[str]
         path for path in attempted_writes if not any(path.startswith(prefix) for prefix in writable_paths)
     ]
     metadata = dict(result.metadata)
+    allowed_tools = list(metadata.get("allowed_tools") or [])
     metadata["trace"] = {
         "role": role,
         "read_only": True,
         "allowed_write_paths": list(writable_paths),
+        "allowed_tools": allowed_tools,
         "attempted_writes": attempted_writes,
         "boundary_violations": boundary_violations,
         "summary": result.summary,
@@ -53,10 +55,14 @@ class FrontendSpecialistService:
         contract: ContractSpec,
         qa_report: Optional[QaReport],
     ) -> AdapterResult:
-        writable_paths = [
-            str(layout.task_reviews_dir(task.id).relative_to(layout.root)) + "/",
-            str(layout.task_proposals_dir(task.id).relative_to(layout.root)) + "/",
-        ]
+        role_config = contract.role_boundaries.get("frontend_specialist", {})
+        writable_paths = list(role_config.get("allowed_paths") or [])
+        allowed_tools = list(role_config.get("allowed_tools") or [])
+        if not writable_paths:
+            writable_paths = [
+                str(layout.task_reviews_dir(task.id).relative_to(layout.root)) + "/",
+                str(layout.task_proposals_dir(task.id).relative_to(layout.root)) + "/",
+            ]
         if hasattr(self.adapter, "invoke"):
             result = self.adapter.invoke(
                 role="frontend_specialist",
@@ -65,6 +71,7 @@ class FrontendSpecialistService:
                 contract=contract.to_dict(),
                 qa_report=qa_report.to_dict() if qa_report else None,
                 writable_paths=writable_paths,
+                allowed_tools=allowed_tools,
             )
             return _annotate_result(_coerce_result(result), "frontend_specialist", writable_paths)
         return _annotate_result(

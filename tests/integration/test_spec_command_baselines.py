@@ -15,6 +15,10 @@ def _run(*args: str) -> subprocess.CompletedProcess[str]:
     )
 
 
+def _active_run_id(workspace: Path) -> str:
+    return json.loads((workspace / ".railforge" / "runtime" / "current_run.json").read_text(encoding="utf-8"))["run_id"]
+
+
 def test_spec_research_writes_structured_proposal_from_clarification(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
 
@@ -61,8 +65,10 @@ def test_spec_plan_generates_requirement_driven_backlog_and_contracts(tmp_path: 
     spec = (
         workspace / "openspec" / "changes" / "workspace" / "specs" / "harness-core" / "spec.md"
     ).read_text(encoding="utf-8")
-    contract = (workspace / ".railforge" / "execution" / "tasks" / "T-001" / "contract.yaml").read_text(encoding="utf-8")
-    backlog = yaml.safe_load((workspace / ".railforge" / "planning" / "backlog.draft.yaml").read_text(encoding="utf-8"))
+    contract = (
+        workspace / ".railforge" / "runtime" / "runs" / _active_run_id(workspace) / "tasks" / "T-001" / "contract.yaml"
+    ).read_text(encoding="utf-8")
+    backlog = yaml.safe_load((workspace / "docs" / "exec-plans" / "active" / "backlog.draft.yaml").read_text(encoding="utf-8"))
 
     assert result.returncode == 0
     assert result.stdout.strip().endswith("BLOCKED")
@@ -101,7 +107,7 @@ def test_spec_plan_refuses_to_progress_with_unresolved_questions(tmp_path: Path)
 
     assert result.returncode == 0
     assert result.stdout.strip().endswith("BLOCKED")
-    assert not (workspace / ".railforge" / "planning" / "backlog.draft.yaml").exists()
+    assert not (workspace / "docs" / "exec-plans" / "active" / "backlog.draft.yaml").exists()
 
 
 def test_spec_review_runs_independent_dual_model_gate_and_writes_review_artifacts(tmp_path: Path) -> None:
@@ -119,11 +125,15 @@ def test_spec_review_runs_independent_dual_model_gate_and_writes_review_artifact
     _run("approve", "--workspace", str(workspace), "--target", "spec")
     _run("spec-plan", "--workspace", str(workspace), "--scenario", "repeated-failure")
     _run("approve", "--workspace", str(workspace), "--target", "backlog")
+    _run("approve", "--workspace", str(workspace), "--target", "contract")
     execute = _run("execute", "--workspace", str(workspace), "--scenario", "repeated-failure")
 
     review = _run("review", "--workspace", str(workspace), "--scenario", "repeated-failure")
     spec_review = _run("spec-review", "--workspace", str(workspace), "--scenario", "repeated-failure")
-    task_dir = workspace / ".railforge" / "execution" / "tasks" / "T-001"
+    run_id = _active_run_id(workspace)
+    task_dir = workspace / ".railforge" / "runtime" / "runs" / run_id / "tasks" / "T-001"
+    review_dir = workspace / ".railforge" / "runtime" / "reviews" / run_id / "T-001"
+    trace_dir = workspace / ".railforge" / "runtime" / "traces" / run_id / "T-001"
     payload = json.loads(spec_review.stdout)
 
     assert execute.returncode == 0
@@ -140,8 +150,9 @@ def test_spec_review_runs_independent_dual_model_gate_and_writes_review_artifact
     assert payload["qa_report"]["backend"]["status"] == "passed"
     assert payload["qa_report"]["frontend"]["status"] == "passed"
     assert payload["qa_report"] != json.loads(review.stdout)
-    assert (task_dir / "reviews" / "spec_review.json").exists()
-    assert (task_dir / "reviews" / "backend_evaluator.md").exists()
-    assert (task_dir / "reviews" / "frontend_evaluator.md").exists()
-    assert (task_dir / "traces" / "backend_evaluator.json").exists()
-    assert (task_dir / "traces" / "frontend_evaluator.json").exists()
+    assert (task_dir / "qa_report.json").exists()
+    assert (review_dir / "spec_review.json").exists()
+    assert (review_dir / "backend_evaluator.md").exists()
+    assert (review_dir / "frontend_evaluator.md").exists()
+    assert (trace_dir / "backend_evaluator.json").exists()
+    assert (trace_dir / "frontend_evaluator.json").exists()

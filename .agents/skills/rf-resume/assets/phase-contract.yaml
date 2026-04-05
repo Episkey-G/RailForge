@@ -1,0 +1,18 @@
+phase: resume
+required_inputs:
+  - latest run state
+  - persisted summaries
+  - approvals
+  - blocked interrupt
+expected_outputs:
+  - reconstructed phase context
+  - clear next action
+blockers:
+  - missing run state
+  - unrecoverable task context
+allowed_actions:
+  - restore
+  - unblock
+  - continue
+disallowed_actions:
+  - silent restart from scratch

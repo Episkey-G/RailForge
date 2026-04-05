@@ -53,9 +53,15 @@
 
 ## 最终闸门
 
-- backlog 清空后，RailForge 会生成 `.railforge/execution/final_review.json`
+- backlog 清空后，RailForge 会生成 `docs/quality/active/final_review.json`
 - 该工件汇总所有 task 级 QA 结果，并作为 change 完成前的最终审查闸门
 - 只有 final review 通过后，才建议进入 `rf-openspec-archive`
+
+## Runtime 约定
+
+- `.railforge/runtime/` 只保存运行态工件，不承载长期 product / planning / quality 真源
+- canonical runtime 路径采用 run-first、semantic-rooted 布局
+- 旧 `.railforge/execution/*`、`runtime/execution/tasks/*` 与 runtime 根 hosted execution 文件只做读取兼容，不再写入
 
 ## Hosted Codex 说明
 

@@ -242,19 +242,73 @@ class WorkspaceLayout:
         return self.rf / "runtime"
 
     @property
+    def runtime_router(self):
+        from railforge.runtime import RuntimeArtifactRouter
+
+        return RuntimeArtifactRouter(self)
+
+    @property
     def docs(self) -> Path:
         return self.root / "docs"
 
     @property
     def product_dir(self) -> Path:
-        return self.rf / "product"
+        return self.docs / "product-specs" / "active"
 
     @property
     def planning_dir(self) -> Path:
-        return self.rf / "planning"
+        return self.docs / "exec-plans" / "active"
 
     @property
     def execution_dir(self) -> Path:
+        return self.runtime / "execution"
+
+    @property
+    def quality_dir(self) -> Path:
+        return self.docs / "quality" / "active"
+
+    @property
+    def observability_dir(self) -> Path:
+        return self.runtime / "observability"
+
+    @property
+    def context_dir(self) -> Path:
+        return self.observability_dir / "context"
+
+    @property
+    def ledgers_dir(self) -> Path:
+        return self.observability_dir / "ledgers"
+
+    @property
+    def codex_dir(self) -> Path:
+        return self.root / ".codex"
+
+    @property
+    def codex_agents_dir(self) -> Path:
+        return self.codex_dir / "agents"
+
+    @property
+    def codex_hooks_path(self) -> Path:
+        return self.codex_dir / "hooks.json"
+
+    @property
+    def codex_config_path(self) -> Path:
+        return self.codex_dir / "config.toml"
+
+    @property
+    def skills_dir(self) -> Path:
+        return self.root / ".agents" / "skills"
+
+    @property
+    def legacy_product_dir(self) -> Path:
+        return self.rf / "product"
+
+    @property
+    def legacy_planning_dir(self) -> Path:
+        return self.rf / "planning"
+
+    @property
+    def legacy_execution_dir(self) -> Path:
         return self.rf / "execution"
 
     @property
@@ -263,11 +317,17 @@ class WorkspaceLayout:
 
     @property
     def tasks(self) -> Path:
-        return self.execution_dir / "tasks"
+        run_id = self.runtime_router.active_run_id()
+        if run_id:
+            return self.runtime_router.tasks_dir(run_id)
+        return self.runtime_router.runs_dir
 
     @property
     def checkpoints(self) -> Path:
-        return self.runtime / "checkpoints"
+        run_id = self.runtime_router.active_run_id()
+        if run_id:
+            return self.runtime_router.checkpoint_dir(run_id)
+        return self.runtime_router.checkpoints_dir
 
     @property
     def langgraph_dir(self) -> Path:
@@ -275,15 +335,21 @@ class WorkspaceLayout:
 
     @property
     def approvals(self) -> Path:
-        return self.runtime / "approvals"
+        run_id = self.runtime_router.active_run_id()
+        if run_id:
+            return self.runtime_router.approval_dir(run_id)
+        return self.runtime_router.approvals_dir
 
     @property
     def interrupts(self) -> Path:
+        run_id = self.runtime_router.active_run_id()
+        if run_id:
+            return self.runtime_router.blocked_interrupt_path(run_id).parent
         return self.runtime / "interrupts"
 
     @property
     def run_state_path(self) -> Path:
-        return self.runtime / "run_state.json"
+        return self.runtime_router.current_run_path
 
     @property
     def policies_path(self) -> Path:
@@ -295,6 +361,9 @@ class WorkspaceLayout:
 
     @property
     def progress_path(self) -> Path:
+        run_id = self.runtime_router.active_run_id()
+        if run_id:
+            return self.runtime_router.progress_path(run_id)
         return self.runtime / "progress.md"
 
     @property
@@ -329,56 +398,69 @@ class WorkspaceLayout:
     def backlog_path(self) -> Path:
         return self.planning_dir / "backlog.yaml"
 
-    def task_dir(self, task_id: str) -> Path:
-        return self.tasks / task_id
+    @property
+    def planning_contract_path(self) -> Path:
+        return self.planning_dir / "contract.yaml"
 
-    def task_reviews_dir(self, task_id: str) -> Path:
-        return self.task_dir(task_id) / "reviews"
+    def task_dir(self, task_id: str, run_id: Optional[str] = None) -> Path:
+        return self.runtime_router.task_dir(task_id, run_id)
 
-    def task_proposals_dir(self, task_id: str) -> Path:
-        return self.task_dir(task_id) / "proposals"
+    def task_reviews_dir(self, task_id: str, run_id: Optional[str] = None) -> Path:
+        return self.runtime_router.review_dir(task_id, run_id)
 
-    def task_logs_dir(self, task_id: str) -> Path:
-        return self.task_dir(task_id) / "logs"
+    def task_proposals_dir(self, task_id: str, run_id: Optional[str] = None) -> Path:
+        return self.runtime_router.proposal_dir(task_id, run_id)
 
-    def task_traces_dir(self, task_id: str) -> Path:
-        return self.task_dir(task_id) / "traces"
+    def task_logs_dir(self, task_id: str, run_id: Optional[str] = None) -> Path:
+        return self.runtime_router.note_dir(task_id, run_id) / "logs"
+
+    def task_traces_dir(self, task_id: str, run_id: Optional[str] = None) -> Path:
+        return self.runtime_router.trace_dir(task_id, run_id)
 
     @property
     def hosted_execution_request_path(self) -> Path:
-        return self.runtime / "hosted_execution_request.json"
+        raise AttributeError("hosted_execution_request_path requires task_id; use layout.runtime_router.execution_request_path()")
 
     @property
     def hosted_execution_result_path(self) -> Path:
-        return self.runtime / "hosted_execution_result.json"
+        raise AttributeError("hosted_execution_result_path requires task_id; use layout.runtime_router.execution_result_path()")
 
     @property
     def final_review_path(self) -> Path:
-        return self.execution_dir / "final_review.json"
+        return self.quality_dir / "final_review.json"
 
     @property
     def final_review_markdown_path(self) -> Path:
-        return self.execution_dir / "final_review.md"
+        return self.quality_dir / "final_review.md"
+
+    @property
+    def legacy_final_review_path(self) -> Path:
+        return self.legacy_execution_dir / "final_review.json"
+
+    @property
+    def legacy_final_review_markdown_path(self) -> Path:
+        return self.legacy_execution_dir / "final_review.md"
 
     def approval_path(self, target: str, task_id: Optional[str] = None) -> Path:
-        name = target if not task_id else "%s-%s" % (target, task_id)
-        return self.approvals / ("%s.json" % name)
+        return self.runtime_router.approval_path(target, task_id)
+
+    def context_pack_path(self, phase: str) -> Path:
+        return self.context_dir / ("%s.json" % phase)
 
     def ensure(self, task_id: Optional[str] = None) -> None:
         self.rf.mkdir(parents=True, exist_ok=True)
         self.runtime.mkdir(parents=True, exist_ok=True)
+        self.docs.mkdir(parents=True, exist_ok=True)
         self.product_dir.mkdir(parents=True, exist_ok=True)
         self.planning_dir.mkdir(parents=True, exist_ok=True)
         self.execution_dir.mkdir(parents=True, exist_ok=True)
+        self.quality_dir.mkdir(parents=True, exist_ok=True)
         self.task_reports_dir.mkdir(parents=True, exist_ok=True)
-        self.tasks.mkdir(parents=True, exist_ok=True)
-        self.checkpoints.mkdir(parents=True, exist_ok=True)
         self.langgraph_dir.mkdir(parents=True, exist_ok=True)
-        self.approvals.mkdir(parents=True, exist_ok=True)
-        self.interrupts.mkdir(parents=True, exist_ok=True)
-        if task_id:
-            self.task_dir(task_id).mkdir(parents=True, exist_ok=True)
-            self.task_reviews_dir(task_id).mkdir(parents=True, exist_ok=True)
-            self.task_proposals_dir(task_id).mkdir(parents=True, exist_ok=True)
-            self.task_logs_dir(task_id).mkdir(parents=True, exist_ok=True)
-            self.task_traces_dir(task_id).mkdir(parents=True, exist_ok=True)
+        self.observability_dir.mkdir(parents=True, exist_ok=True)
+        self.context_dir.mkdir(parents=True, exist_ok=True)
+        self.ledgers_dir.mkdir(parents=True, exist_ok=True)
+        self.runtime_router.ensure_roots()
+        run_id = self.runtime_router.active_run_id()
+        if run_id:
+            self.runtime_router.ensure_roots(run_id=run_id, task_id=task_id)
