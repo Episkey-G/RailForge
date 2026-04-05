@@ -64,13 +64,47 @@ class WorkflowCommandService:
         (openspec_root / "changes").mkdir(parents=True, exist_ok=True)
         (openspec_root / "specs").mkdir(parents=True, exist_ok=True)
         build_phase_context(self.workspace, phase="spec-init")
+        readiness = self._diagnose_readiness()
         return {
             "workspace": str(self.workspace),
             "openspec": str(openspec_root),
             "runtime": str(self.layout.runtime),
             "codex": str(self.layout.codex_dir),
-            "status": "READY",
+            "status": readiness["status"],
+            "issues": readiness.get("issues", []),
         }
+
+    def _diagnose_readiness(self) -> dict[str, Any]:
+        """doctor 分级：READY / DEGRADED / BLOCKED"""
+        import shutil
+        issues = []  # type: list[str]
+        # 关键前置：runtime 目录和 .railforge 存在
+        if not self.layout.rf.is_dir():
+            issues.append("CRITICAL: .railforge directory missing")
+        if not self.layout.runtime.is_dir():
+            issues.append("CRITICAL: .railforge/runtime directory missing")
+        # 关键前置：railforge binary 可达
+        if not shutil.which("railforge"):
+            # 检查 ~/.codex/bin/railforge 备选路径
+            fallback = Path.home() / ".codex" / "bin" / "railforge"
+            if not fallback.exists():
+                issues.append("CRITICAL: railforge binary not found in PATH or ~/.codex/bin/")
+        # 可选：模型配置
+        if not self.layout.models_path.exists():
+            issues.append("WARNING: models.yaml not found, model routing may not work")
+        # 可选：skills 目录
+        if not self.layout.skills_dir.is_dir():
+            issues.append("WARNING: .agents/skills/ not found, skill-based workflow unavailable")
+        # 判定分级
+        critical = [i for i in issues if i.startswith("CRITICAL")]
+        warnings = [i for i in issues if i.startswith("WARNING")]
+        if critical:
+            status = "BLOCKED"
+        elif warnings:
+            status = "DEGRADED"
+        else:
+            status = "READY"
+        return {"status": status, "issues": issues}
 
     def answer(self, args: Any) -> str:
         self.store.init_workspace()
@@ -93,6 +127,71 @@ class WorkflowCommandService:
             task_id=args.task_id or "",
         )
         return "APPROVED"
+
+    _APPROVAL_GATE_MAP = {
+        "spec": "spec_approval_required",
+        "backlog": "backlog_approval_required",
+        "contract": "contract_approval_required",
+    }
+
+    def approve_and_resume(self, args: Any) -> str:
+        self.store.init_workspace()
+        self.store.save_approval(
+            target=args.target,
+            approved_by=args.approved_by or "human",
+            note=args.note or "",
+            task_id=args.task_id or "",
+        )
+        try:
+            run_state = load_run_state(self.workspace)
+        except Exception:
+            return "APPROVED"
+        expected_gate = self._APPROVAL_GATE_MAP.get(args.target)
+        if run_state.get("state") == "BLOCKED" and run_state.get("blocked_reason") == expected_gate:
+            services = prepare_resume_services(args, self.workspace, allow_recovery=True)
+            harness = RailForgeHarness(workspace=self.workspace, services=services)
+            result = harness.resume(
+                reason="approve-and-resume",
+                note=args.note or "auto-resumed after %s approval" % args.target,
+            )
+            return result.state.value
+        return "APPROVED"
+
+    def answer_and_resume(self, args: Any) -> str:
+        self.store.init_workspace()
+        payload = yaml.safe_load(Path(args.file).read_text(encoding="utf-8")) or {}
+        try:
+            current = self.store.load_answers()
+        except ArtifactNotFoundError:
+            current = {"answers": {}}
+        current_answers = dict(current.get("answers", {}))
+        current_answers.update(payload.get("answers", {}))
+        self.store.save_answers({"answers": current_answers})
+        try:
+            run_state = load_run_state(self.workspace)
+        except Exception:
+            return "ANSWERS_CAPTURED"
+        if run_state.get("state") == "BLOCKED" and run_state.get("blocked_reason") in {
+            "clarification_required",
+            "decision_required",
+        }:
+            services = prepare_resume_services(args, self.workspace, allow_recovery=True)
+            harness = RailForgeHarness(workspace=self.workspace, services=services)
+            result = harness.resume(
+                reason="answer-and-resume",
+                note=args.note or "auto-resumed after clarification",
+            )
+            return result.state.value
+        return "ANSWERS_CAPTURED"
+
+    def adopt_worktree(self, args: Any) -> str:
+        services = prepare_resume_services(args, self.workspace, allow_recovery=True)
+        harness = RailForgeHarness(workspace=self.workspace, services=services)
+        result = harness.adopt_worktree(
+            task_id=args.task_id,
+            note=getattr(args, "note", None) or "manual repair adopted",
+        )
+        return result.state.value
 
     def status(self) -> dict[str, Any]:
         recovery = RuntimeRecovery(

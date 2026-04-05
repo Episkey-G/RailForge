@@ -42,7 +42,7 @@ def test_run_loop_blocks_then_resume_completes(tmp_path: Path) -> None:
     store.save_approval("contract", approved_by="human", note="contract ok")
     blocked = harness.resume(reason="backlog_approved", note="开始执行")
     assert blocked.state == RunState.BLOCKED
-    assert blocked.blocked_reason in {"repair_budget_exhausted", "same_failure_signature", "repair_blocked"}
+    assert blocked.blocked_reason in {"repair_budget_exhausted", "same_failure_signature", "repair_blocked", "repeated_failure_signature"}
 
     services.allow_recovery()
     resumed = harness.resume(reason="manual_override", note="人工确认后继续")

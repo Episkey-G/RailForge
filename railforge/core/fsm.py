@@ -13,7 +13,7 @@ _ALLOWED_TRANSITIONS = {
     RunState.IMPLEMENTING: {RunState.STATIC_REVIEW, RunState.BLOCKED, RunState.FAILED},
     RunState.STATIC_REVIEW: {RunState.RUNTIME_QA, RunState.REPAIRING, RunState.BLOCKED, RunState.FAILED},
     RunState.RUNTIME_QA: {RunState.READY_TO_COMMIT, RunState.REPAIRING, RunState.BLOCKED, RunState.FAILED},
-    RunState.REPAIRING: {RunState.IMPLEMENTING, RunState.BLOCKED, RunState.FAILED},
+    RunState.REPAIRING: {RunState.IMPLEMENTING, RunState.STATIC_REVIEW, RunState.BLOCKED, RunState.FAILED},
     RunState.READY_TO_COMMIT: {RunState.COMMITTED, RunState.BLOCKED, RunState.FAILED},
     RunState.COMMITTED: {RunState.NEXT_TASK, RunState.BLOCKED, RunState.FAILED},
     RunState.NEXT_TASK: {RunState.TASK_SELECTED, RunState.DONE, RunState.BLOCKED, RunState.FAILED},

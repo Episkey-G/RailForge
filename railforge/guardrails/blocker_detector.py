@@ -6,13 +6,13 @@ def detect_blocker(run: RunMeta, task: TaskItem, repeated_failure: bool = False)
         return BlockerDecision(
             blocked=True,
             reason="repair_budget_exhausted",
-            resume_from_state="IMPLEMENTING",
+            resume_from_state="STATIC_REVIEW",
         )
     if repeated_failure:
         return BlockerDecision(
             blocked=True,
             reason="repeated_failure_signature",
-            resume_from_state="IMPLEMENTING",
+            resume_from_state="STATIC_REVIEW",
         )
     return BlockerDecision(blocked=False, reason=None, resume_from_state=None)
 
