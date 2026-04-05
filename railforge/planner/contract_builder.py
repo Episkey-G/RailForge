@@ -1,4 +1,7 @@
+from typing import Optional
+
 from railforge.core.models import ContractSpec, TaskItem
+from railforge.planner.planning_contract import PlanningContract, task_scope_mismatches
 
 
 _KNOWN_SURFACES = [
@@ -12,14 +15,19 @@ _KNOWN_SURFACES = [
 ]
 
 
-def _task_context(task: TaskItem) -> list[str]:
+def _task_context(task: TaskItem, planning_contract: Optional[PlanningContract] = None) -> list[str]:
     dependencies = "无" if not task.depends_on else ", ".join(task.depends_on)
-    return [
+    context = [
         f"任务标题：{task.title}",
         f"优先级：{task.priority}",
         f"风险级别：{task.risk_level}",
         f"依赖任务：{dependencies}",
     ]
+    if planning_contract and planning_contract.locked_decisions:
+        context.extend(f"锁定约束：{item}" for item in planning_contract.locked_decisions)
+    if planning_contract and planning_contract.deliverables:
+        context.extend(f"规划交付物：{item}" for item in planning_contract.deliverables)
+    return context
 
 
 def _non_scope(task: TaskItem) -> list[str]:
@@ -60,10 +68,20 @@ def _role_boundaries(task: TaskItem) -> dict[str, dict[str, object]]:
     }
 
 
-def build_contract(task: TaskItem) -> ContractSpec:
+def build_contract(task: TaskItem, planning_contract: Optional[PlanningContract] = None) -> ContractSpec:
     scope = [task.title]
+    if planning_contract:
+        scope.extend(item for item in planning_contract.deliverables if item not in scope)
+        mismatches = task_scope_mismatches(task.allowed_paths, planning_contract)
+        if mismatches:
+            raise ValueError("allowed_paths_outside_planning_contract:%s" % ",".join(mismatches))
     non_scope = _non_scope(task)
     rollback = ["撤回本任务引入的文件变更", "恢复 contract 指定目录到前一稳定状态"]
+    done_definition = list(task.done_definition)
+    if planning_contract:
+        for item in planning_contract.locked_decisions:
+            if item not in done_definition:
+                done_definition.append(item)
     return ContractSpec(
         task_id=task.id,
         scope=scope,
@@ -71,8 +89,8 @@ def build_contract(task: TaskItem) -> ContractSpec:
         allowed_paths=task.allowed_paths,
         verification=task.verification,
         rollback=rollback,
-        done_definition=task.done_definition,
-        task_context=_task_context(task),
+        done_definition=done_definition,
+        task_context=_task_context(task, planning_contract=planning_contract),
         writeback_requirements=_writeback_requirements(task),
         role_boundaries=_role_boundaries(task),
     )

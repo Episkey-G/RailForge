@@ -31,6 +31,9 @@ class InterruptManager:
     def load_blocked(self) -> Dict[str, Any]:
         return self.loader.load_blocked_interrupt()
 
+    def clear_blocked(self) -> None:
+        self.writer.clear_blocked_interrupt()
+
     def record_unblock(self, reason: str, note: str) -> None:
         self.layout.ensure()
         self.writer.write_unblock_decision(reason=reason, note=note)

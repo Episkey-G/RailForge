@@ -20,7 +20,7 @@ description: Use when a requirement must be transformed into constraint sets, HI
 
 ## Steps
 
-1. 运行 `python -m railforge spec-research`
+1. 运行 `railforge spec-research`
 2. 读取当前需求、相关上下文和代码约束
 3. 提炼：
    - 约束

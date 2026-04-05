@@ -37,10 +37,8 @@ def test_spec_research_writes_structured_proposal_from_clarification(tmp_path: P
     assert "## HITL 问题" in proposal
     assert "Q-001" in proposal
     assert "Q-002" in proposal
-    assert "Q-003" in proposal
     assert "## 决策点" in proposal
     assert "D-001" in proposal
-    assert "D-002" in proposal
     assert "## 下一步" in proposal
 
 

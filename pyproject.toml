@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "railforge"
-version = "0.1.0"
+version = "0.1.7"
 description = "State-machine driven agent harness for RailForge"
 requires-python = ">=3.9"
 dependencies = ["PyYAML>=6.0", "langgraph>=0.2.50"]

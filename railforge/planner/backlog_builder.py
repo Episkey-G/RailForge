@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 from railforge.core.models import ProductSpec, TaskItem
+from railforge.planner.planning_contract import PlanningContract
 
 
 def _classify_requirement(requirement: str) -> Tuple[str, str, List[str], List[str], str]:
@@ -32,7 +33,68 @@ def _classify_requirement(requirement: str) -> Tuple[str, str, List[str], List[s
     return ("generic", "实现核心能力", ["railforge/", "tests/"], ["pytest tests/test_runtime_planning.py"], "high")
 
 
-def build_backlog(spec: ProductSpec) -> List[TaskItem]:
+def _planning_verification(paths: List[str]) -> List[str]:
+    if any(path.startswith("site/") or path.startswith("frontend/") for path in paths):
+        return ["pytest tests/test_frontend_flow.py"]
+    if any(path.startswith("backend/") for path in paths):
+        return ["pytest tests/test_backend_flow.py"]
+    return ["pytest tests/test_runtime_planning.py"]
+
+
+def _planning_prefix(paths: List[str]) -> str:
+    if any(path.startswith("site/") or path.startswith("frontend/") for path in paths):
+        return "实现前端能力"
+    if any(path.startswith("backend/") for path in paths):
+        return "实现后端能力"
+    return "实现核心能力"
+
+
+def _deliverables_for_scope(deliverables: List[str], paths: List[str]) -> List[str]:
+    scoped = []
+    for item in deliverables:
+        lowered = item.lower()
+        if any(path.rstrip("/").lower() in lowered for path in paths):
+            scoped.append(item)
+    return scoped
+
+
+def build_backlog(spec: ProductSpec, planning_contract: Optional[PlanningContract] = None) -> List[TaskItem]:
+    if planning_contract and planning_contract.is_ready and planning_contract.user_code_paths:
+        scoped_deliverables = _deliverables_for_scope(planning_contract.deliverables, planning_contract.user_code_paths)
+        requirements = [
+            item.strip()
+            for item in (scoped_deliverables or spec.acceptance_criteria or [spec.summary.strip() or "需求满足"])
+            if item.strip()
+        ]
+        allowed_paths = planning_contract.user_code_paths
+        prefix = _planning_prefix(allowed_paths)
+        verification = _planning_verification(allowed_paths)
+        constraints = planning_contract.locked_decisions
+
+        tasks: List[TaskItem] = []
+        previous_ids: List[str] = []
+        for index, requirement in enumerate(requirements, start=1):
+            task_id = f"T-{index:03d}"
+            done_definition = [requirement]
+            for item in constraints:
+                if item not in done_definition:
+                    done_definition.append(item)
+            tasks.append(
+                TaskItem(
+                    id=task_id,
+                    title=f"{prefix}：{requirement}",
+                    status="ready" if index == 1 else "todo",
+                    priority="high",
+                    depends_on=previous_ids[:],
+                    allowed_paths=list(allowed_paths),
+                    verification=list(verification),
+                    repair_budget=2,
+                    done_definition=done_definition,
+                )
+            )
+            previous_ids.append(task_id)
+        return tasks
+
     requirements = [item.strip() for item in spec.acceptance_criteria if item.strip()]
     if not requirements:
         requirements = [spec.summary.strip() or "需求满足"]

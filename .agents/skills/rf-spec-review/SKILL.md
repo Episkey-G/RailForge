@@ -27,7 +27,7 @@ description: Use when an implementation or active change needs an independent du
 
 ## Steps
 
-1. 运行 `python -m railforge spec-review`
+1. 运行 `railforge spec-review`
 2. 收集：
    - OpenSpec constraints
    - backlog / contract

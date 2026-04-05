@@ -7,7 +7,7 @@ description: Codex CLI-first skill for reviewing RailForge changes against the p
 
 Use this skill after execution to verify the result against the approved plan.
 
-- Entry point: `python -m railforge review`
+- Entry point: `railforge review`
 - Compare the delivered change with the research notes and plan.
 - Review is driven by the Python review gate and should include both Claude and Gemini outputs when they are available.
 - Call out regressions, missing tests, and any scope drift.

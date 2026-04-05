@@ -134,6 +134,11 @@ class ArtifactWriter:
     def write_unblock_decision(self, reason: str, note: str) -> None:
         self.write_json(self.layout.interrupts / "unblock_decision.json", {"reason": reason, "note": note})
 
+    def clear_blocked_interrupt(self) -> None:
+        path = self.layout.interrupts / "blocked_interrupt.json"
+        if path.exists():
+            path.unlink()
+
     def record_progress(self, line: str) -> None:
         progress = self.layout.progress_path
         existing = "# Progress\n\n"

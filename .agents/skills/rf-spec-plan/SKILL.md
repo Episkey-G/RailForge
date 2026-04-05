@@ -20,7 +20,7 @@ description: Use when research is approved and the team must turn constraints in
 
 ## Steps
 
-1. 运行 `python -m railforge spec-plan`
+1. 运行 `railforge spec-plan`
 2. 审核 proposal 和 research 结果
 3. 做零决策规划：
    - 技术选择

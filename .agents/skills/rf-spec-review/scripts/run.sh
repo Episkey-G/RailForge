@@ -4,6 +4,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CODEX_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 RAILFORGE_BIN="$CODEX_ROOT/bin/railforge"
+if [[ ! -x "$RAILFORGE_BIN" && -x "$CODEX_ROOT/bin/railforge.exe" ]]; then
+  RAILFORGE_BIN="$CODEX_ROOT/bin/railforge.exe"
+fi
 PYTHON_BIN="${RAILFORGE_PYTHON_BIN:-}"
 
 if [[ -x "$RAILFORGE_BIN" ]]; then

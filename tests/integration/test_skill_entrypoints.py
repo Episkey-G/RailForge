@@ -56,6 +56,7 @@ def test_skill_entrypoints_exist_and_call_expected_commands() -> None:
         if skill_name in WORKSPACE_AWARE_SKILLS:
             assert '--workspace "$PWD"' in script_text
         assert 'bin/railforge' in script_text
+        assert 'railforge.exe' in script_text
         assert script_file.stat().st_mode & stat.S_IXUSR
 
     for skill_name, bridge_name in BRIDGE_SKILLS.items():

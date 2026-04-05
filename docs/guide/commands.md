@@ -79,6 +79,8 @@ npx railforge-workflow uninstall --target <dir>
 
 - 默认用户级安装根是 `~/.codex`
 - RailForge 二进制目标目录是 `~/.codex/bin/`
+- 安装后实际可执行文件名是 `~/.codex/bin/railforge` 和 `~/.codex/bin/railforge-codeagent`
+- GitHub Release 发布的原始资产名是 `railforge-<platform>-<arch>` 与 `railforge-codeagent-<platform>-<arch>`
 - RailForge skills 安装到 `~/.codex/skills/railforge/`
 - RailForge 用户级配置安装到 `~/.codex/.railforge/`
 - `~/.codex/AGENTS.md` 只会追加 RailForge 标记块

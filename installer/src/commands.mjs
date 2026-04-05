@@ -1,3 +1,5 @@
+import { execFileSync } from 'node:child_process'
+import { readFileSync } from 'node:fs'
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -28,7 +30,7 @@ description: Use when a repository needs the RailForge spec workflow initialized
 
 ## Steps
 
-1. 运行 \`python3 -m railforge spec-init --workspace <当前仓库路径>\`
+1. 运行 \`railforge spec-init --workspace <当前仓库路径>\`
 2. 初始化 OpenSpec 和 \`.railforge\`
 3. 验证环境是否可进入主工作流
 
@@ -56,7 +58,7 @@ description: Use when a requirement must be transformed into constraint sets, HI
 
 ## Steps
 
-1. 运行 \`python -m railforge spec-research\`
+1. 运行 \`railforge spec-research\`
 2. 提炼约束、风险、依赖和 open questions
 3. 写入 OpenSpec proposal 与 \`.railforge/product/*\`
 
@@ -83,7 +85,7 @@ description: Use when research is approved and the team must turn constraints in
 
 ## Steps
 
-1. 运行 \`python -m railforge spec-plan\`
+1. 运行 \`railforge spec-plan\`
 2. 把 proposal 收敛成 zero-decision executable plan
 3. 写入 OpenSpec 和 \`.railforge/planning/*\`
 `,
@@ -106,7 +108,7 @@ description: Use when spec planning is approved and the full implementation loop
 
 ## Hosted Codex Loop
 
-1. 运行 \`python -m railforge spec-impl\`
+1. 运行 \`railforge spec-impl\`
 2. 内部执行：
    - \`prepare-execution\`
    - Hosted Codex 主写作
@@ -133,7 +135,7 @@ description: Use when an implementation or active change needs an independent du
 
 ## Steps
 
-1. 运行 \`python -m railforge spec-review\`
+1. 运行 \`railforge spec-review\`
 2. 收集 OpenSpec 与 \`.railforge\` 工件
 3. 触发 Python review gate
 4. 汇总 Claude 和 Gemini 发现
@@ -179,7 +181,7 @@ description: Codex CLI-first skill for resuming a blocked or paused RailForge wo
 
 # RF Resume
 
-- Entry point: \`python -m railforge resume\`
+- Entry point: \`railforge resume\`
 `,
   'rf-status': `---
 name: rf-status
@@ -188,7 +190,7 @@ description: Codex CLI-first skill for checking the current RailForge workflow s
 
 # RF Status
 
-- Entry point: \`python -m railforge status\`
+- Entry point: \`railforge status\`
 `
 }
 
@@ -311,7 +313,10 @@ roles:
     model: gemini-3.1-pro-preview
 `
 
-const RAILFORGE_BINARY_VERSION = '0.1.0'
+const INSTALLER_VERSION = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version
+const RAILFORGE_BINARY_VERSION = INSTALLER_VERSION
+const GITHUB_REPO = 'Episkey-G/RailForge'
+const RELEASE_TAG = `railforge-v${RAILFORGE_BINARY_VERSION}`
 
 function platformSuffix() {
   const platform = process.platform === 'darwin'
@@ -326,6 +331,27 @@ function platformSuffix() {
 function binaryFileName(baseName) {
   const ext = process.platform === 'win32' ? '.exe' : ''
   return `${baseName}-${platformSuffix()}${ext}`
+}
+
+function installedBinaryName(baseName) {
+  return `${baseName}${process.platform === 'win32' ? '.exe' : ''}`
+}
+
+function binarySources() {
+  const customBaseUrls = (process.env.RAILFORGE_BINARY_BASE_URL || '')
+    .split(',')
+    .map(item => item.trim())
+    .filter(Boolean)
+  if (customBaseUrls.length > 0) {
+    return customBaseUrls.map(url => ({ name: 'custom', url, timeoutMs: 15_000 }))
+  }
+  return [
+    {
+      name: 'GitHub Release',
+      url: `https://github.com/${GITHUB_REPO}/releases/download/${RELEASE_TAG}`,
+      timeoutMs: 120_000,
+    },
+  ]
 }
 
 const POLICIES_YAML = `version: 2
@@ -396,10 +422,13 @@ function resolveInstallPaths(targetDir) {
     policiesPath: path.join(railforgeRoot, 'policies.yaml'),
     mcpCatalogPath: path.join(railforgeRoot, 'mcp.json'),
     statePath: path.join(railforgeRoot, 'installer-state.json'),
+    binaryStatePath: path.join(railforgeRoot, 'binaries.json'),
     claudeMcpPath: path.join(homeRoot, '.claude', '.mcp.json'),
     geminiSettingsPath: path.join(homeRoot, '.gemini', 'settings.json'),
-    railforgeBinPath: path.join(codexRoot, 'bin', binaryFileName('railforge')),
-    codeagentBinPath: path.join(codexRoot, 'bin', binaryFileName('railforge-codeagent')),
+    railforgeBinPath: path.join(codexRoot, 'bin', installedBinaryName('railforge')),
+    codeagentBinPath: path.join(codexRoot, 'bin', installedBinaryName('railforge-codeagent')),
+    railforgeAssetName: binaryFileName('railforge'),
+    codeagentAssetName: binaryFileName('railforge-codeagent'),
   }
 }
 
@@ -682,6 +711,172 @@ async function fileExists(filePath) {
   }
 }
 
+function normalizeBinaryVersion(output) {
+  const trimmed = output.trim()
+  if (!trimmed) {
+    return ''
+  }
+  const lines = trimmed.split(/\r?\n/).map(line => line.trim()).filter(Boolean)
+  const lastLine = lines[lines.length - 1]
+  const versionMatch = lastLine.match(/\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?$/)
+  return versionMatch ? versionMatch[0] : lastLine
+}
+
+function installedBinaryVersion(filePath) {
+  try {
+    const output = execFileSync(filePath, ['--version'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+    return normalizeBinaryVersion(output)
+  }
+  catch {
+    return null
+  }
+}
+
+async function downloadToFile(url, destPath, timeoutMs) {
+  const response = await fetch(url, {
+    redirect: 'follow',
+    signal: AbortSignal.timeout(timeoutMs),
+    headers: {
+      'user-agent': `railforge-workflow/${INSTALLER_VERSION}`,
+    },
+  })
+  if (!response.ok) {
+    throw new Error(`download failed: ${response.status} ${response.statusText}`)
+  }
+  const bytes = Buffer.from(await response.arrayBuffer())
+  await fs.writeFile(destPath, bytes)
+}
+
+async function installBinaryRelease(destPath, assetName, expectedVersion) {
+  if (await fileExists(destPath)) {
+    const currentVersion = installedBinaryVersion(destPath)
+    if (currentVersion === expectedVersion) {
+      return {
+        path: destPath,
+        assetName,
+        status: 'existing',
+        version: currentVersion,
+      }
+    }
+  }
+
+  const tmpPath = `${destPath}.download`
+  const errors = []
+  for (const source of binarySources()) {
+    const baseUrl = source.url.replace(/\/$/, '')
+    const url = `${baseUrl}/${assetName}`
+    try {
+      await downloadToFile(url, tmpPath, source.timeoutMs)
+      if (process.platform !== 'win32') {
+        await fs.chmod(tmpPath, 0o755)
+      }
+      const downloadedVersion = installedBinaryVersion(tmpPath)
+      if (downloadedVersion !== expectedVersion) {
+        throw new Error(`expected ${expectedVersion}, got ${downloadedVersion || 'unknown'}`)
+      }
+      await fs.rm(destPath, { force: true })
+      await fs.rename(tmpPath, destPath)
+      return {
+        path: destPath,
+        assetName,
+        status: 'installed',
+        version: downloadedVersion,
+        source: url,
+      }
+    }
+    catch (error) {
+      errors.push(`${source.name}: ${error instanceof Error ? error.message : String(error)}`)
+    }
+    finally {
+      await fs.rm(tmpPath, { force: true }).catch(() => {})
+    }
+  }
+
+  return {
+    path: destPath,
+    assetName,
+    status: 'missing',
+    version: null,
+    errors,
+  }
+}
+
+async function installBinaryFiles(paths, installedFiles) {
+  if (process.env.RAILFORGE_SKIP_BINARY_INSTALL === '1') {
+    const binaries = [
+      {
+        name: 'railforge',
+        path: paths.railforgeBinPath,
+        assetName: paths.railforgeAssetName,
+        status: 'skipped',
+        version: null,
+      },
+      {
+        name: 'railforge-codeagent',
+        path: paths.codeagentBinPath,
+        assetName: paths.codeagentAssetName,
+        status: 'skipped',
+        version: null,
+      },
+    ]
+    await fs.writeFile(
+      paths.binaryStatePath,
+      JSON.stringify(
+        {
+          version: RAILFORGE_BINARY_VERSION,
+          releaseTag: RELEASE_TAG,
+          skipped: true,
+          binaries,
+        },
+        null,
+        2
+      ),
+      'utf8'
+    )
+    installedFiles.push(paths.binaryStatePath)
+    return { binaries, warnings: [] }
+  }
+
+  const entries = [
+    { key: 'railforge', destPath: paths.railforgeBinPath, assetName: paths.railforgeAssetName },
+    { key: 'railforge-codeagent', destPath: paths.codeagentBinPath, assetName: paths.codeagentAssetName },
+  ]
+
+  const binaries = []
+  const warnings = []
+  for (const entry of entries) {
+    const result = await installBinaryRelease(entry.destPath, entry.assetName, RAILFORGE_BINARY_VERSION)
+    binaries.push({ name: entry.key, ...result })
+    if (result.status !== 'missing') {
+      installedFiles.push(entry.destPath)
+      continue
+    }
+    warnings.push(
+      `未能下载 ${entry.assetName}，已保留 Python 回退路径。${(result.errors || []).join(' | ')}`
+    )
+  }
+
+  await fs.writeFile(
+    paths.binaryStatePath,
+    JSON.stringify(
+      {
+        version: RAILFORGE_BINARY_VERSION,
+        releaseTag: RELEASE_TAG,
+        binaries,
+      },
+      null,
+      2
+    ),
+    'utf8'
+  )
+  installedFiles.push(paths.binaryStatePath)
+
+  return { binaries, warnings }
+}
+
 async function writeMirrorFiles(targetDir, mcpConfig) {
   const paths = resolveInstallPaths(targetDir)
   return {
@@ -768,6 +963,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
 CODEX_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 RAILFORGE_BIN="$CODEX_ROOT/bin/railforge"
+if [[ ! -x "$RAILFORGE_BIN" && -x "$CODEX_ROOT/bin/railforge.exe" ]]; then
+  RAILFORGE_BIN="$CODEX_ROOT/bin/railforge.exe"
+fi
 PYTHON_BIN="\${RAILFORGE_PYTHON_BIN:-}"
 
 if [[ -x "$RAILFORGE_BIN" ]]; then
@@ -808,6 +1006,7 @@ echo "${skillName} bridges to ${bridgeName}. Invoke that skill from Codex CLI."
 export async function initProject(targetDir) {
   const paths = resolveInstallPaths(targetDir)
   const installedFiles = []
+  const warnings = []
 
   await ensureDir(paths.codexRoot)
   await ensureDir(paths.binRoot)
@@ -843,11 +1042,15 @@ export async function initProject(targetDir) {
     )
   }
 
+  const binaryInstall = await installBinaryFiles(paths, installedFiles)
+  warnings.push(...binaryInstall.warnings)
+
   const state = await loadInstallerState(paths.statePath)
   const mirrorState = await writeMirrorFiles(targetDir, mcpConfig)
   const agentsPatch = await upsertMarkedBlock(paths.codexAgentsPath, DEFAULT_AGENTS_MD)
 
   state.installedFiles = installedFiles
+  state.binaries = binaryInstall.binaries
   state.sharedPatches = {
     codexAgents: agentsPatch,
     codexConfig: mirrorState.codex,
@@ -856,7 +1059,14 @@ export async function initProject(targetDir) {
   }
   await saveInstallerState(paths.statePath, state)
 
-  return { action: 'init', status: 'installed', target: paths.codexRoot, installedFiles }
+  return {
+    action: 'init',
+    status: 'installed',
+    target: paths.codexRoot,
+    installedFiles,
+    binaries: binaryInstall.binaries,
+    warnings,
+  }
 }
 
 export async function updateProject(targetDir) {
@@ -866,6 +1076,8 @@ export async function updateProject(targetDir) {
     status: 'updated',
     target: result.target,
     installedFiles: result.installedFiles,
+    binaries: result.binaries,
+    warnings: result.warnings,
   }
 }
 
@@ -936,6 +1148,7 @@ export async function uninstallProject(targetDir) {
   await fs.rm(paths.statePath, { force: true })
   await fs.rm(path.join(paths.codexRoot, 'skills', 'railforge'), { recursive: true, force: true })
   await fs.rm(paths.railforgeRoot, { recursive: true, force: true })
+  await pruneIfEmpty(paths.binRoot, paths.codexRoot)
   await pruneIfEmpty(path.join(paths.codexRoot, 'skills'), paths.codexRoot)
   await pruneIfEmpty(paths.codexRoot, paths.homeRoot)
   await pruneIfEmpty(path.dirname(paths.claudeMcpPath), paths.homeRoot)

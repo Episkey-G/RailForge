@@ -3,7 +3,7 @@ from railforge.cli import build_parser
 
 
 def test_package_exports_version() -> None:
-    assert __version__ == "0.1.0"
+    assert __version__ == "0.1.7"
 
 
 def test_cli_parser_supports_run_command() -> None:

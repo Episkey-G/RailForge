@@ -28,6 +28,9 @@ def test_resume_after_answers_blocks_for_spec_approval(tmp_path: Path) -> None:
 
     store.save_answers({"answers": {"Q-001": "按产品说明", "Q-002": "UTC", "Q-003": "日期不能早于今天"}})
     resumed = harness.resume(reason="clarification_resolved", note="已补充规划答案")
+    questions = store.load_questions()
 
     assert resumed.state == RunState.BLOCKED
     assert resumed.blocked_reason == "spec_approval_required"
+    assert questions["unresolved"] == []
+    assert [item["id"] for item in questions["resolved"]] == ["Q-001", "Q-002"]
