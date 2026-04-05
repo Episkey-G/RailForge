@@ -11,6 +11,7 @@ from railforge.core.models import CheckpointRecord, RunMeta, TaskItem, Workspace
 class FileCheckpointStore:
     def __init__(self, layout: WorkspaceLayout) -> None:
         self.layout = layout
+        self.router = layout.runtime_router
 
     def _atomic_write(self, path: Path, payload: Dict[str, Any]) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -33,7 +34,9 @@ class FileCheckpointStore:
     ) -> CheckpointRecord:
         sequence = run_meta.checkpoint_index + 1
         file_name = "%04d-%s.json" % (sequence, run_meta.state.value.lower())
-        path = self.layout.checkpoints / file_name
+        checkpoint_dir = self.router.checkpoint_dir(run_meta.run_id)
+        checkpoint_dir.mkdir(parents=True, exist_ok=True)
+        path = checkpoint_dir / file_name
         payload = {
             "sequence": sequence,
             "run_state": run_meta.to_dict(),
@@ -50,14 +53,15 @@ class FileCheckpointStore:
         self._atomic_write(path, payload)
         return CheckpointRecord(sequence=sequence, state=run_meta.state, path=path, langgraph=langgraph_ref or {})
 
-    def load_latest(self) -> Dict[str, Any]:
-        files = sorted(self.layout.checkpoints.glob("*.json"))
+    def load_latest(self, run_id: Optional[str] = None) -> Dict[str, Any]:
+        checkpoint_dir = self.router.checkpoint_dir(run_id)
+        files = sorted(checkpoint_dir.glob("*.json"))
         if not files:
-            raise ArtifactNotFoundError(str(self.layout.checkpoints))
+            raise ArtifactNotFoundError(str(checkpoint_dir))
         return json.loads(files[-1].read_text(encoding="utf-8"))
 
-    def load_latest_or_none(self) -> Optional[Dict[str, Any]]:
+    def load_latest_or_none(self, run_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
         try:
-            return self.load_latest()
+            return self.load_latest(run_id)
         except ArtifactNotFoundError:
             return None

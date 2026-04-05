@@ -30,7 +30,10 @@ class CodexWriterService:
         contract: ContractSpec,
         run_meta: RunMeta,
     ) -> AdapterResult:
-        writable_paths = list(contract.allowed_paths) + [str(layout.task_dir(task.id).relative_to(layout.root)) + "/"]
+        role_config = contract.role_boundaries.get("lead_writer", {})
+        writable_paths = list(role_config.get("allowed_paths") or [])
+        if not writable_paths:
+            writable_paths = list(contract.allowed_paths) + [str(layout.task_dir(task.id).relative_to(layout.root)) + "/"]
         if hasattr(self.adapter, "invoke"):
             result = self.adapter.invoke(
                 role="lead_writer",

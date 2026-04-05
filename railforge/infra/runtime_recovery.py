@@ -129,7 +129,7 @@ class RuntimeRecovery:
         if current_task is not None:
             run_meta.current_task_id = current_task.id
 
-        checkpoint = self.checkpoints.load_latest_or_none()
+        checkpoint = self.checkpoints.load_latest_or_none(run_meta.run_id)
         checkpoint_consistent = True
         langgraph_ref: Dict[str, Any] = {}
         blocked_interrupt: Dict[str, Any] = {}

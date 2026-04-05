@@ -3,6 +3,8 @@
 本文档用于兑现变更 `align-railforge-with-ccg-three-phase-loop` 的第 1 组任务，记录阶段 1 审计时 RailForge 与 `ccg-workflow` 的对齐面、已验证能力和明确缺口。
 它是基线快照，不负责实时覆盖后续任务对这些缺口的修复进展。
 
+> 注：本文档保留的是阶段 1 审计快照。当前主线实现已经进一步收敛为 Codex CLI front door + run-first semantic-rooted runtime；若与本文快照冲突，应以最新 `README.md`、`AGENTS.md` 和 `docs/architecture/*` 的现状说明为准。
+
 ## 对齐矩阵
 
 | 维度 | `ccg-workflow` 期望 | RailForge 当前现状 | 状态 | 证据 |
@@ -18,7 +20,7 @@
 1. 安装器骨架、MCP 分组和多宿主镜像配置已具备最小可用形态。
 2. `spec-init / spec-research / spec-plan / spec-impl / spec-review` 命令都存在，且主工作流 smoke 测试可运行。
 3. Hosted Codex 的 `prepare-execution / record-execution` 协议已串上状态机，能够把当前 task 和 contract 交给主写作者。
-4. `.railforge/` 目录已经承担 runtime truth layer，包含 product、planning、execution、approvals、interrupts 和 checkpoints。
+4. `.railforge/runtime/` 目录承担 runtime truth layer，包含 execution、approvals、interrupts、context packs 和 checkpoints；长期 product/planning/quality 真源转到 `docs/`。
 
 ## 已标记并验证的关键缺口（阶段 1 审计快照）
 

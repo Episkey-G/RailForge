@@ -2,7 +2,9 @@ from pathlib import Path
 
 import pytest
 
-from railforge.core.models import ContractSpec, TaskItem, WorkspaceLayout
+from railforge.artifacts.store import ArtifactStore
+from railforge.core.enums import RunState
+from railforge.core.models import ContractSpec, RunMeta, TaskItem, WorkspaceLayout
 from railforge.orchestrator.contract_gate import ContractGate, ContractGateError
 from railforge.orchestrator.interrupts import InterruptManager
 from railforge.planner.contract_builder import build_contract
@@ -34,19 +36,45 @@ def _contract() -> ContractSpec:
         task_context=["当前任务聚焦后端校验"],
         writeback_requirements={
             "required_fields": ["task_id", "summary", "changed_files", "verification_notes"],
-            "result_path": ".railforge/runtime/hosted_execution_result.json",
+            "result_path": ".railforge/runtime/execution_results/run-1/T-001/hosted_codex.json",
         },
         role_boundaries={
             "lead_writer": {
                 "read_only": False,
-                "allowed_paths": ["backend/", "tests/", ".railforge/execution/tasks/T-001/"],
+                "allowed_paths": ["backend/", "tests/", ".railforge/runtime/runs/run-1/tasks/T-001/"],
+                "allowed_tools": ["shell", "git", "playwright"],
             },
             "backend_specialist": {
                 "read_only": True,
                 "allowed_paths": [
-                    ".railforge/execution/tasks/T-001/reviews/",
-                    ".railforge/execution/tasks/T-001/proposals/",
+                    ".railforge/runtime/reviews/run-1/T-001/",
+                    ".railforge/runtime/proposals/run-1/T-001/",
                 ],
+                "allowed_tools": ["shell", "search"],
+            },
+            "frontend_specialist": {
+                "read_only": True,
+                "allowed_paths": [
+                    ".railforge/runtime/reviews/run-1/T-001/",
+                    ".railforge/runtime/proposals/run-1/T-001/",
+                ],
+                "allowed_tools": ["shell", "playwright", "search"],
+            },
+            "backend_evaluator": {
+                "read_only": True,
+                "allowed_paths": [
+                    ".railforge/runtime/reviews/run-1/T-001/",
+                    ".railforge/runtime/proposals/run-1/T-001/",
+                ],
+                "allowed_tools": ["shell", "search"],
+            },
+            "frontend_evaluator": {
+                "read_only": True,
+                "allowed_paths": [
+                    ".railforge/runtime/reviews/run-1/T-001/",
+                    ".railforge/runtime/proposals/run-1/T-001/",
+                ],
+                "allowed_tools": ["shell", "playwright", "search"],
             },
         },
     )
@@ -61,7 +89,7 @@ def test_contract_gate_rejects_missing_rollback() -> None:
 
 
 def test_build_contract_includes_execution_context_and_boundaries() -> None:
-    contract = build_contract(_task())
+    contract = build_contract(_task(), run_id="run-1")
 
     assert contract.task_context
     assert any("Backend validation" in item for item in contract.task_context)
@@ -71,17 +99,31 @@ def test_build_contract_includes_execution_context_and_boundaries() -> None:
         "changed_files",
         "verification_notes",
     ]
-    assert contract.writeback_requirements["result_path"] == ".railforge/runtime/hosted_execution_result.json"
+    assert contract.writeback_requirements["result_path"] == ".railforge/runtime/execution_results/run-1/T-001/hosted_codex.json"
     assert contract.role_boundaries["lead_writer"]["read_only"] is False
     assert contract.role_boundaries["backend_specialist"]["read_only"] is True
     assert contract.role_boundaries["frontend_specialist"]["read_only"] is True
-    assert ".railforge/execution/tasks/T-001/" in contract.role_boundaries["lead_writer"]["allowed_paths"]
-    assert ".railforge/execution/tasks/T-001/reviews/" in contract.role_boundaries["backend_specialist"]["allowed_paths"]
+    assert contract.role_boundaries["lead_writer"]["allowed_tools"] == ["shell", "git", "playwright"]
+    assert contract.role_boundaries["backend_specialist"]["allowed_tools"] == ["shell", "search"]
+    assert ".railforge/runtime/runs/run-1/tasks/T-001/" in contract.role_boundaries["lead_writer"]["allowed_paths"]
+    assert ".railforge/runtime/reviews/run-1/T-001/" in contract.role_boundaries["backend_specialist"]["allowed_paths"]
     assert any("frontend/" in item for item in contract.non_scope)
 
 
 def test_interrupt_manager_roundtrip(tmp_path: Path) -> None:
-    manager = InterruptManager(WorkspaceLayout(tmp_path))
+    layout = WorkspaceLayout(tmp_path)
+    store = ArtifactStore(layout)
+    store.init_workspace()
+    store.save_run_state(
+        RunMeta(
+            run_id="run-1",
+            state=RunState.BLOCKED,
+            current_task_id="T-001",
+            blocked_reason="manual_approval",
+            resume_from_state="IMPLEMENTING",
+        )
+    )
+    manager = InterruptManager(layout)
     payload = manager.record_blocked(
         task_id="T-001",
         reason="manual_approval",

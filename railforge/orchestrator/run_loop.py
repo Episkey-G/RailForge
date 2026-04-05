@@ -6,6 +6,7 @@ from uuid import uuid4
 
 from railforge.adapters.base import HarnessServices
 from railforge.artifacts.store import ArtifactStore
+from railforge.context.assembler import ContextAssembler
 from railforge.core.enums import RunState
 from railforge.core.errors import ArtifactNotFoundError, ResumeError
 from railforge.core.fsm import ensure_transition, terminal_states
@@ -13,12 +14,13 @@ from railforge.core.models import (
     AdapterResult,
     ContractSpec,
     PhaseEvaluationResult,
+    QaFinding,
     QaReport,
     RunMeta,
     TaskItem,
     WorkspaceLayout,
 )
-from railforge.evaluator.aggregate_eval import AggregateEvaluator, coerce_phase_result
+from railforge.evaluator.aggregate_eval import AggregateEvaluator, coerce_finding, coerce_phase_result
 from railforge.evaluator.outcome_eval import OutcomeEvaluator
 from railforge.evaluator.qa_manager import QaManager
 from railforge.evaluator.runtime_eval import RuntimeEvaluator
@@ -32,10 +34,16 @@ from railforge.infra.file_lock import WorkspaceLock
 from railforge.infra.langgraph_bridge import LangGraphBridge
 from railforge.infra.runtime_recovery import RuntimeRecovery
 from railforge.infra.run_logger import RunLogger
+from railforge.observability.ledger import ObservabilityLedger
 from railforge.planner.backlog_builder import build_backlog
-from railforge.planner.clarification import analyze_request
+from railforge.planner.clarification_service import ClarificationService
 from railforge.planner.contract_builder import build_contract
-from railforge.planner.planning_contract import load_planning_contract
+from railforge.planner.planning_contract import (
+    contract_approval_required,
+    draft_planning_contract,
+    load_effective_planning_contract,
+    load_planning_contract,
+)
 from railforge.planner.task_selector import select_next_task
 
 from .commit_gate import evaluate_commit_gate
@@ -49,6 +57,8 @@ class RailForgeHarness:
         self.store = ArtifactStore(self.layout)
         self.checkpoints = FileCheckpointStore(self.layout)
         self.logger = RunLogger(self.store)
+        self.context_assembler = ContextAssembler(self.layout, self.store)
+        self.ledger = ObservabilityLedger(self.layout, self.store)
         self.services = services
         self.lock = WorkspaceLock(self.layout.rf / "run.lock")
         self.contract_gate = ContractGate()
@@ -66,6 +76,7 @@ class RailForgeHarness:
         self.runtime_evaluator = RuntimeEvaluator()
         self.outcome_evaluator = OutcomeEvaluator()
         self.qa_manager = QaManager()
+        self.clarification_service = ClarificationService(getattr(self.services, "clarification_analyst", None))
         self.codex_writer = CodexWriterService(self.services.lead_writer)
         self.backend_specialist = BackendSpecialistService(self.services.backend_specialist)
         self.frontend_specialist = FrontendSpecialistService(self.services.frontend_specialist)
@@ -228,6 +239,7 @@ class RailForgeHarness:
         ]
         self.store.write_json(self.layout.final_review_path, payload)
         self.store.write_text(self.layout.final_review_markdown_path, "\n".join(lines) + "\n")
+        self.ledger.append("final_review", payload)
 
     def _build_final_review_payload(self, tasks: List[TaskItem]) -> Dict[str, Any]:
         task_results = []
@@ -288,6 +300,11 @@ class RailForgeHarness:
                     "status": "failed",
                     "reason": "review_context_missing",
                 }
+        self.context_assembler.build(
+            phase="spec-review",
+            run_meta=self.run_meta,
+            task_id=self.run_meta.current_task_id if self.run_meta else None,
+        )
 
         tasks = self._load_tasks()
         if not tasks:
@@ -403,6 +420,12 @@ class RailForgeHarness:
                 raise ResumeError("run is not blocked")
             if not self.run_meta.resume_from_state:
                 raise ResumeError("blocked run has no resume_from_state")
+            self.context_assembler.build(
+                phase="resume",
+                run_meta=self.run_meta,
+                task_id=self.run_meta.current_task_id,
+                extra={"reason": reason, "note": note},
+            )
             self.interrupts.record_unblock(reason=reason, note=note)
             self.interrupts.clear_blocked()
             self.run_meta.state = RunState(self.run_meta.resume_from_state)
@@ -434,7 +457,7 @@ class RailForgeHarness:
             result = self._drive()
             if result.blocked_reason != "hosted_execution_required":
                 raise ResumeError("run is not waiting for hosted execution")
-            payload = self.store.read_json(self.layout.hosted_execution_request_path)
+            payload = self.store.read_json(self.layout.runtime_router.execution_request_path(self.run_meta.current_task_id))
             task_id = payload.get("task_id") or self.run_meta.current_task_id
             if task_id:
                 self.store.save_trace(task_id, "hosted_execution_request.json", payload)
@@ -450,7 +473,7 @@ class RailForgeHarness:
             if not task_id:
                 raise ResumeError("hosted execution result missing task id")
             self.run_meta.current_task_id = task_id
-            self.store.write_json(self.layout.hosted_execution_result_path, payload)
+            self.store.write_json(self.layout.runtime_router.execution_result_path(task_id, self.run_meta.run_id), payload)
             self.store.save_trace(task_id, "hosted_execution_result.json", payload)
             self._last_implementation = AdapterResult(
                 success=True,
@@ -475,6 +498,14 @@ class RailForgeHarness:
     def _drive(self) -> RunMeta:
         while self.run_meta and self.run_meta.state not in terminal_states():
             state = self.run_meta.state
+            if state in {RunState.CONTRACT_NEGOTIATION, RunState.IMPLEMENTING} and self._contract_approval_required():
+                self._block(
+                    reason="contract_approval_required",
+                    resume_from_state=RunState.CONTRACT_NEGOTIATION,
+                    note="waiting for approved planning contract",
+                    task_id=self.run_meta.current_task_id or "PLANNING",
+                )
+                continue
             if state == RunState.INTAKE:
                 self._handle_intake()
             elif state == RunState.SPEC_EXPANSION:
@@ -502,6 +533,7 @@ class RailForgeHarness:
         return self.run_meta
 
     def _transition(self, nxt: RunState) -> None:
+        previous = self.run_meta.state.value
         ensure_transition(self.run_meta.state, nxt)
         self.run_meta.state = nxt
         if nxt != RunState.BLOCKED:
@@ -510,6 +542,7 @@ class RailForgeHarness:
             self.interrupts.clear_blocked()
         self.store.save_run_state(self.run_meta)
         self.logger.append("STATE -> %s" % nxt.value)
+        self.ledger.record_state_transition(previous=previous, current=nxt.value, task_id=self.run_meta.current_task_id)
         self._snapshot()
 
     def _active_backlog(self) -> Dict[str, Any]:
@@ -529,6 +562,13 @@ class RailForgeHarness:
     def _has_approval(self, target: str, task_id: str = "") -> bool:
         return self.store.has_approval(target=target, task_id=task_id)
 
+    def _contract_approval_required(self) -> bool:
+        return contract_approval_required(
+            self.layout.root,
+            backlog_approved=self._has_approval("backlog"),
+            contract_approved=self._has_approval("contract"),
+        )
+
     def _block(self, reason: str, resume_from_state: RunState, note: str, task_id: str = "PLANNING") -> None:
         self.run_meta.blocked_reason = reason
         self.run_meta.resume_from_state = resume_from_state.value
@@ -539,6 +579,7 @@ class RailForgeHarness:
             note=note,
         )
         self.store.save_run_state(self.run_meta)
+        self.ledger.record_failure(reason=reason, signature=self.run_meta.last_failure_signature, task_id=task_id)
         self._transition(RunState.BLOCKED)
 
     def _snapshot(self) -> None:
@@ -597,6 +638,9 @@ class RailForgeHarness:
         if adapter is None:
             return PhaseEvaluationResult(status="passed", summary="%s not configured" % role)
 
+        role_config = contract.role_boundaries.get(role, {})
+        writable_paths = list(role_config.get("allowed_paths") or [])
+
         if hasattr(adapter, "invoke"):
             result = adapter.invoke(
                 role=role,
@@ -604,7 +648,7 @@ class RailForgeHarness:
                 task=task.to_dict(),
                 contract=contract.to_dict(),
                 qa_report=qa_report.to_dict(),
-                writable_paths=[str(self.layout.task_reports_dir)],
+                writable_paths=writable_paths,
             )
             payload = result.metadata.get("structured", {}) if isinstance(result, AdapterResult) else {}
             if not payload and isinstance(result, dict):
@@ -619,19 +663,28 @@ class RailForgeHarness:
         return PhaseEvaluationResult(status="passed", summary="%s completed" % role)
 
     def _handle_intake(self) -> None:
-        self.store.write_text(self.layout.runtime / "intake.md", self.run_meta.request_text)
+        self.store.write_text(self.layout.runtime_router.run_note_path("intake.md", self.run_meta.run_id), self.run_meta.request_text)
         self._transition(RunState.SPEC_EXPANSION)
 
     def _handle_spec_expansion(self) -> None:
+        context_pack = self.context_assembler.build(
+            phase="spec-research",
+            run_meta=self.run_meta,
+            extra={"request_text": self.run_meta.request_text},
+        )
         approved_spec = None
         try:
             approved_spec = self.store.load_product_spec()
         except ArtifactNotFoundError:
             approved_spec = None
-        clarification = analyze_request(
+        clarification = self.clarification_service.analyze(
+            phase="research",
             project=self.run_meta.project_name,
             request_text=self.run_meta.request_text,
             answers=self._load_answers(),
+            context=context_pack,
+            previous_questions=self._load_existing_questions(),
+            workspace=str(self.layout.root),
         )
         if not (approved_spec and self._has_approval("spec")):
             self.store.save_product_spec(clarification.spec, draft=True)
@@ -664,10 +717,32 @@ class RailForgeHarness:
             return
         self._transition(RunState.BACKLOG_BUILD)
 
+    def _load_existing_questions(self) -> Dict[str, Any]:
+        try:
+            return self.store.load_questions()
+        except ArtifactNotFoundError:
+            return {}
+
     def _handle_backlog_build(self) -> None:
+        self.context_assembler.build(phase="spec-plan", run_meta=self.run_meta)
         spec = self.store.load_product_spec()
         planning_contract = load_planning_contract(self.layout.root)
         tasks = build_backlog(spec, planning_contract=planning_contract)
+        if planning_contract is None:
+            try:
+                decisions = self.store.load_decisions().get("decisions", [])
+            except ArtifactNotFoundError:
+                decisions = []
+            self.store.write_yaml(
+                self.layout.planning_contract_path,
+                draft_planning_contract(
+                    workspace=self.layout.root,
+                    project=self.run_meta.project_name or self.layout.root.name,
+                    tasks=tasks,
+                    decisions=decisions,
+                    template=self.context_assembler.asset_resolver.load_planning_contract_template(),
+                ),
+            )
         self._persist_tasks(tasks, current_task=None, draft=True)
         if not self._has_approval("backlog"):
             self._block(
@@ -697,9 +772,16 @@ class RailForgeHarness:
 
     def _handle_contract_negotiation(self) -> None:
         task = self._current_task()
-        planning_contract = load_planning_contract(self.layout.root)
+        planning_contract = load_effective_planning_contract(
+            self.layout.root,
+            contract_approved=self._has_approval("contract"),
+        )
         try:
-            contract = build_contract(task, planning_contract=planning_contract if planning_contract and planning_contract.is_ready else None)
+            contract = build_contract(
+                task,
+                planning_contract=planning_contract if planning_contract and planning_contract.is_ready else None,
+                run_id=self.run_meta.run_id,
+            )
             self.contract_gate.validate(task=task, contract=contract)
         except ValueError as exc:
             self._block(
@@ -715,18 +797,32 @@ class RailForgeHarness:
     def _handle_implementing(self) -> None:
         task = self._current_task()
         contract = self._current_contract()
+        self.context_assembler.build(
+            phase="spec-impl",
+            run_meta=self.run_meta,
+            task_id=task.id,
+            extra={"entry_state": self.run_meta.state.value},
+        )
         self._last_implementation = self.codex_writer.execute(
             layout=self.layout,
             task=task,
             contract=contract,
             run_meta=self.run_meta,
         )
+        self.ledger.record_tool_invocation(
+            role="lead_writer",
+            payload={
+                "task_id": task.id,
+                "changed_files": list(self._last_implementation.changed_files),
+                "mode": self._last_implementation.metadata.get("mode", "direct"),
+            },
+        )
         if (
             self._last_implementation.metadata.get("mode") == "hosted_codex"
             and self._last_implementation.metadata.get("status") == "pending_hosted_execution"
         ):
             self.store.write_json(
-                self.layout.runtime / "hosted_execution_request.json",
+                self.layout.runtime_router.execution_request_path(task.id, self.run_meta.run_id),
                 self._last_implementation.metadata,
             )
             self._block(
@@ -742,30 +838,7 @@ class RailForgeHarness:
     def _handle_static_review(self) -> None:
         task = self._current_task()
         contract = self._current_contract()
-        previous_qa = None
-        qa_path = self.layout.task_dir(task.id) / "qa_report.json"
-        if qa_path.exists():
-            previous_qa = self.store.load_qa_report(task.id)
-
-        backend_review = self.backend_specialist.review(
-            layout=self.layout,
-            task=task,
-            contract=contract,
-            qa_report=previous_qa,
-        )
-        frontend_review = self.frontend_specialist.review(
-            layout=self.layout,
-            task=task,
-            contract=contract,
-            qa_report=previous_qa,
-        )
-        self.store.save_review(task.id, "backend_review.md", backend_review.summary)
-        self.store.save_review(task.id, "frontend_review.md", frontend_review.summary)
-        self.store.save_proposal(task.id, "backend_patch.diff", backend_review.proposed_patch or "")
-        self.store.save_proposal(task.id, "frontend_patch.diff", frontend_review.proposed_patch or "")
-        self.store.save_trace(task.id, "backend_specialist.json", backend_review.metadata.get("trace", {}))
-        self.store.save_trace(task.id, "frontend_specialist.json", frontend_review.metadata.get("trace", {}))
-        self._last_reviews = [backend_review, frontend_review]
+        self._last_reviews = []
         self._last_static = self.static_evaluator.evaluate(task, contract, self._last_implementation, self._last_reviews)
         if self._last_static.status != "passed":
             qa = self.qa_manager.aggregate(
@@ -775,9 +848,47 @@ class RailForgeHarness:
                 outcome_phase=PhaseEvaluationResult(status="skipped", summary="outcome skipped"),
             )
             self.store.save_qa_report(task.id, qa)
+            self.ledger.record_qa_report(qa)
             self._transition(RunState.REPAIRING)
             return
         self._transition(RunState.RUNTIME_QA)
+
+    @staticmethod
+    def _review_findings(role: str, review: AdapterResult) -> List[Any]:
+        findings: List[Any] = []
+        structured = review.metadata.get("structured", {})
+        if isinstance(structured, dict):
+            raw_findings = structured.get("findings", [])
+            for item in raw_findings:
+                findings.append(coerce_finding(item))
+            if structured.get("status") == "failed" and not raw_findings:
+                findings.append(
+                    QaFinding(
+                        severity="high",
+                        source=role,
+                        message="review failed: %s" % (structured.get("summary") or review.summary or role),
+                        evidence=review.summary or str(structured),
+                    )
+                )
+        if review.metadata.get("blocker"):
+            findings.append(
+                QaFinding(
+                    severity="high",
+                    source=role,
+                    message="review blocker: %s" % review.summary,
+                    evidence=review.summary,
+                )
+            )
+        for violation in review.metadata.get("trace", {}).get("boundary_violations", []):
+            findings.append(
+                QaFinding(
+                    severity="critical",
+                    source=role,
+                    message="boundary violation: %s" % violation,
+                    evidence=violation,
+                )
+            )
+        return findings
 
     def _handle_runtime_qa(self) -> None:
         task = self._current_task()
@@ -790,13 +901,47 @@ class RailForgeHarness:
             runtime_phase=runtime_phase,
             outcome_phase=outcome_phase,
         )
+        if qa.status != "approved":
+            self.store.save_qa_report(task.id, qa)
+            self.ledger.record_qa_report(qa)
+            self._transition(RunState.REPAIRING)
+            return
+
+        backend_review = self.backend_specialist.review(
+            layout=self.layout,
+            task=task,
+            contract=contract,
+            qa_report=qa,
+        )
+        frontend_review = self.frontend_specialist.review(
+            layout=self.layout,
+            task=task,
+            contract=contract,
+            qa_report=qa,
+        )
+        self.store.save_review(task.id, "backend_review.md", backend_review.summary)
+        self.store.save_review(task.id, "frontend_review.md", frontend_review.summary)
+        self.store.save_proposal(task.id, "backend_patch.diff", backend_review.proposed_patch or "")
+        self.store.save_proposal(task.id, "frontend_patch.diff", frontend_review.proposed_patch or "")
+        self.store.save_trace(task.id, "backend_specialist.json", backend_review.metadata.get("trace", {}))
+        self.store.save_trace(task.id, "frontend_specialist.json", frontend_review.metadata.get("trace", {}))
+        self.ledger.record_tool_invocation(role="backend_specialist", payload={"task_id": task.id, "summary": backend_review.summary})
+        self.ledger.record_tool_invocation(role="frontend_specialist", payload={"task_id": task.id, "summary": frontend_review.summary})
+        specialist_findings = self._merge_findings(
+            self._review_findings("backend_specialist", backend_review),
+            self._review_findings("frontend_specialist", frontend_review),
+        )
+        self._last_reviews = [backend_review, frontend_review]
+
         backend_eval_adapter = getattr(self.services, "backend_evaluator", None)
         frontend_eval_adapter = getattr(self.services, "frontend_evaluator", None)
         if backend_eval_adapter is not None and frontend_eval_adapter is not None:
             backend_eval = self._invoke_phase_adapter(backend_eval_adapter, "backend_evaluator", task, contract, qa)
             frontend_eval = self._invoke_phase_adapter(frontend_eval_adapter, "frontend_evaluator", task, contract, qa)
             aggregate_phase = self.aggregate_evaluator.merge(backend_eval, frontend_eval)
-            combined_findings = self._merge_findings(qa.findings, aggregate_phase.findings)
+            self.ledger.record_tool_invocation(role="backend_evaluator", payload={"task_id": task.id, "summary": backend_eval.summary})
+            self.ledger.record_tool_invocation(role="frontend_evaluator", payload={"task_id": task.id, "summary": frontend_eval.summary})
+            combined_findings = self._merge_findings(qa.findings, specialist_findings, aggregate_phase.findings)
             review_summary = self._build_review_summary(
                 mode="runtime_qa",
                 scope="task",
@@ -824,7 +969,27 @@ class RailForgeHarness:
             qa.backend = aggregate_phase.details.get("backend", {})
             qa.frontend = aggregate_phase.details.get("frontend", {})
             qa.review = review_summary
+            self.ledger.record_review_findings(
+                task_id=task.id,
+                findings=[finding.to_dict() for finding in combined_findings],
+                verdict=qa.status,
+            )
+        elif specialist_findings:
+            qa = self.qa_manager.build_report(
+                task=task,
+                static_status=self._last_static or PhaseEvaluationResult(status="passed", summary="static review passed"),
+                runtime_status=runtime_phase,
+                outcome_status=outcome_phase,
+                findings=specialist_findings,
+                failure_signature=qa.failure_signature,
+            )
+            self.ledger.record_review_findings(
+                task_id=task.id,
+                findings=[finding.to_dict() for finding in specialist_findings],
+                verdict=qa.status,
+            )
         self.store.save_qa_report(task.id, qa)
+        self.ledger.record_qa_report(qa)
         if qa.status == "approved":
             self._transition(RunState.READY_TO_COMMIT)
             return
@@ -834,6 +999,11 @@ class RailForgeHarness:
         task = self._current_task()
         qa_report = self.store.load_qa_report(task.id)
         self.run_meta.repair_count += 1
+        self.ledger.record_repair_attempt(
+            task_id=task.id,
+            repair_count=self.run_meta.repair_count,
+            failure_signature=qa_report.failure_signature,
+        )
         decision = repair_decision(
             repair_count=self.run_meta.repair_count,
             repair_budget=task.repair_budget,

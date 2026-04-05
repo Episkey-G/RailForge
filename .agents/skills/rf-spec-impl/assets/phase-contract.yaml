@@ -1,0 +1,19 @@
+phase: spec-impl
+required_inputs:
+  - approved backlog
+  - approved contract
+  - task contract
+  - phase context pack
+expected_outputs:
+  - hosted codex execution result
+  - runtime task traces
+  - repair notes when needed
+blockers:
+  - missing contract approval
+  - hosted execution handshake incomplete
+allowed_actions:
+  - implementation within contract scope
+  - runtime writeback
+disallowed_actions:
+  - replanning
+  - unapproved scope expansion

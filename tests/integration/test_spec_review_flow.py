@@ -43,6 +43,8 @@ def test_spec_init_to_spec_review_hosted_smoke_flow(tmp_path: Path) -> None:
 
     approve_backlog = _run(workspace, "approve", "--target", "backlog")
     assert approve_backlog.returncode == 0
+    approve_contract = _run(workspace, "approve", "--target", "contract")
+    assert approve_contract.returncode == 0
 
     for _ in range(5):
         prepare = _run(workspace, "prepare-execution", "--profile", "mock", "--scenario", "hosted-smoke")
@@ -86,4 +88,4 @@ def test_spec_init_to_spec_review_hosted_smoke_flow(tmp_path: Path) -> None:
     assert review.returncode == 0
     assert payload["scope"] == "change"
     assert payload["status"] == "approved"
-    assert (workspace / ".railforge" / "execution" / "final_review.json").exists()
+    assert (workspace / "docs" / "quality" / "active" / "final_review.json").exists()

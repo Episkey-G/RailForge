@@ -1,8 +1,7 @@
 from pathlib import Path
 
-from railforge.adapters.hosted_codex_adapter import HostedCodexAdapter
-from railforge.adapters.role_router import RoleRouter
 from railforge.commands import build_services
+from railforge.providers import HostedCodexAdapter, RoleRouter
 
 
 def test_role_router_defaults_lead_writer_to_hosted_codex() -> None:

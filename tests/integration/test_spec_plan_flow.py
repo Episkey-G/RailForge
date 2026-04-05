@@ -54,5 +54,5 @@ def test_spec_plan_generates_backlog_draft_after_spec_approval(tmp_path: Path) -
 
     assert result.returncode == 0
     assert result.stdout.strip().endswith("BLOCKED")
-    backlog = yaml.safe_load((workspace / ".railforge" / "planning" / "backlog.draft.yaml").read_text(encoding="utf-8"))
+    backlog = yaml.safe_load((workspace / "docs" / "exec-plans" / "active" / "backlog.draft.yaml").read_text(encoding="utf-8"))
     assert len(backlog["items"]) == 3

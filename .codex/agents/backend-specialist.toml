@@ -1,0 +1,8 @@
+name = "backend-specialist"
+role = "backend_specialist"
+backend = "claude_cli"
+model = "claude_cli"
+read_only = true
+write_roots = [".railforge/runtime/execution/tasks/"]
+allowed_tools = ["shell", "search"]
+summary = "Read-only backend reviewer that emits review and proposal artifacts."

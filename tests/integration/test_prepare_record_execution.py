@@ -5,7 +5,7 @@ from pathlib import Path
 
 from railforge.adapters.base import HarnessServices
 from railforge.adapters.hosted_codex_adapter import HostedCodexAdapter
-from railforge.adapters.mock import MockSpecialistAdapter
+from railforge.adapters.mock import MockClarificationAnalystAdapter, MockSpecialistAdapter
 from railforge.adapters.git import DryRunGitAdapter
 from railforge.adapters.playwright import NoopPlaywrightAdapter
 from railforge.adapters.shell import LocalShellAdapter
@@ -27,6 +27,7 @@ def _hosted_services() -> HarnessServices:
         playwright=NoopPlaywrightAdapter(),
         backend_evaluator=backend,
         frontend_evaluator=frontend,
+        clarification_analyst=MockClarificationAnalystAdapter(),
     )
 
 
@@ -44,10 +45,71 @@ def _bootstrap_hosted_run(tmp_path: Path, request_text: str) -> tuple[RailForgeH
     assert second.blocked_reason == "backlog_approval_required"
 
     store.save_approval("backlog", approved_by="human", note="backlog ok")
+    store.save_approval("contract", approved_by="human", note="contract ok")
     return harness, store
 
 
 def test_prepare_execution_outputs_hosted_context(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "railforge",
+            "spec-research",
+            "--profile",
+            "real",
+            "--workspace",
+            str(workspace),
+            "--request",
+            "最小 hosted smoke",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    subprocess.run(
+        [sys.executable, "-m", "railforge", "approve", "--workspace", str(workspace), "--target", "spec"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    subprocess.run(
+        [sys.executable, "-m", "railforge", "spec-plan", "--profile", "real", "--workspace", str(workspace)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    subprocess.run(
+        [sys.executable, "-m", "railforge", "approve", "--workspace", str(workspace), "--target", "backlog"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    subprocess.run(
+        [sys.executable, "-m", "railforge", "approve", "--workspace", str(workspace), "--target", "contract"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    result = subprocess.run(
+        [sys.executable, "-m", "railforge", "prepare-execution", "--profile", "real", "--workspace", str(workspace)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0
+    payload = json.loads(result.stdout)
+    assert payload["mode"] == "hosted_codex"
+    assert "prompt" in payload
+    assert "allowed_paths" in payload
+    assert payload["context_pack"]["contract_gate"]["approval_required"] is False
+    assert payload["context_pack"]["paths"]["planning_contract_truth"] == "docs/exec-plans/active/contract.yaml"
+
+
+def test_prepare_execution_blocks_without_contract_approval(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     subprocess.run(
         [
@@ -93,10 +155,10 @@ def test_prepare_execution_outputs_hosted_context(tmp_path: Path) -> None:
     )
 
     assert result.returncode == 0
-    payload = json.loads(result.stdout)
-    assert payload["mode"] == "hosted_codex"
-    assert "prompt" in payload
-    assert "allowed_paths" in payload
+    assert json.loads(result.stdout) == {
+        "state": "BLOCKED",
+        "reason": "contract_approval_required",
+    }
 
 
 def test_prepare_execution_includes_contract_context_and_writeback(tmp_path: Path) -> None:
@@ -119,14 +181,17 @@ def test_prepare_execution_includes_contract_context_and_writeback(tmp_path: Pat
     assert payload["roles"]["lead_writer"]["read_only"] is False
     assert payload["roles"]["backend_specialist"]["read_only"] is True
     assert payload["roles"]["frontend_specialist"]["read_only"] is True
+    run_id = store.load_run_state().run_id
 
     trace = json.loads(
-        (workspace / ".railforge" / "execution" / "tasks" / "T-001" / "traces" / "hosted_execution_request.json").read_text(
+        (
+            workspace / ".railforge" / "runtime" / "traces" / run_id / "T-001" / "hosted_execution_request.json"
+        ).read_text(
             encoding="utf-8"
         )
     )
     assert trace["task_id"] == "T-001"
-    assert trace["writeback"]["result_path"] == ".railforge/runtime/hosted_execution_result.json"
+    assert trace["writeback"]["result_path"] == f".railforge/runtime/execution_results/{run_id}/T-001/hosted_codex.json"
 
 
 def test_record_execution_advances_to_static_review_or_beyond(tmp_path: Path) -> None:
@@ -143,6 +208,7 @@ def test_record_execution_advances_to_static_review_or_beyond(tmp_path: Path) ->
     assert second.blocked_reason == "backlog_approval_required"
 
     store.save_approval("backlog", approved_by="human", note="backlog ok")
+    store.save_approval("contract", approved_by="human", note="contract ok")
     payload = harness.prepare_execution_payload(reason="prepare_execution", note="prepare")
     assert payload["mode"] == "hosted_codex"
 
@@ -182,18 +248,25 @@ def test_record_execution_persists_specialist_traces_and_finishes_single_task(tm
     )
 
     workspace = store.layout.root
+    run_id = store.load_run_state().run_id
     backend_trace = json.loads(
-        (workspace / ".railforge" / "execution" / "tasks" / "T-001" / "traces" / "backend_specialist.json").read_text(
+        (
+            workspace / ".railforge" / "runtime" / "traces" / run_id / "T-001" / "backend_specialist.json"
+        ).read_text(
             encoding="utf-8"
         )
     )
     frontend_trace = json.loads(
-        (workspace / ".railforge" / "execution" / "tasks" / "T-001" / "traces" / "frontend_specialist.json").read_text(
+        (
+            workspace / ".railforge" / "runtime" / "traces" / run_id / "T-001" / "frontend_specialist.json"
+        ).read_text(
             encoding="utf-8"
         )
     )
     execution_trace = json.loads(
-        (workspace / ".railforge" / "execution" / "tasks" / "T-001" / "traces" / "hosted_execution_result.json").read_text(
+        (
+            workspace / ".railforge" / "runtime" / "traces" / run_id / "T-001" / "hosted_execution_result.json"
+        ).read_text(
             encoding="utf-8"
         )
     )
@@ -201,8 +274,8 @@ def test_record_execution_persists_specialist_traces_and_finishes_single_task(tm
     assert backend_trace["read_only"] is True
     assert frontend_trace["read_only"] is True
     assert backend_trace["allowed_write_paths"] == [
-        ".railforge/execution/tasks/T-001/reviews/",
-        ".railforge/execution/tasks/T-001/proposals/",
+        f".railforge/runtime/reviews/{run_id}/T-001/",
+        f".railforge/runtime/proposals/{run_id}/T-001/",
     ]
     assert frontend_trace["boundary_violations"] == []
     assert execution_trace["verification_notes"] == ["pytest tests/test_backend_flow.py"]
@@ -230,7 +303,18 @@ def test_record_execution_advances_to_next_task_after_commit_gate(tmp_path: Path
     )
 
     workspace = store.layout.root
-    next_request = json.loads((workspace / ".railforge" / "runtime" / "hosted_execution_request.json").read_text(encoding="utf-8"))
+    run_id = store.load_run_state().run_id
+    next_request = json.loads(
+        (
+            workspace
+            / ".railforge"
+            / "runtime"
+            / "execution_requests"
+            / run_id
+            / "T-002"
+            / "hosted_codex.json"
+        ).read_text(encoding="utf-8")
+    )
     backlog = store.load_backlog()
 
     assert result.state == RunState.BLOCKED
@@ -255,6 +339,7 @@ def test_record_execution_recovers_current_task_from_backlog(tmp_path: Path) -> 
     assert second.blocked_reason == "backlog_approval_required"
 
     store.save_approval("backlog", approved_by="human", note="backlog ok")
+    store.save_approval("contract", approved_by="human", note="contract ok")
     harness.prepare_execution_payload(reason="prepare_execution", note="prepare")
 
     run_state = store.load_run_state()

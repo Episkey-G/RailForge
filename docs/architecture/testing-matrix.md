@@ -14,15 +14,15 @@
 | `tests/integration/test_skill_hosted_protocol.py` | `rf-execute / rf-review / rf-resume` 的 skill 文档已经切到 hosted 协议。 |
 | `tests/integration/test_docs_guides.py` | 命令手册与 FAQ 已生成并覆盖主工作流与常见问题。 |
 | `tests/integration/test_run_loop.py` | The harness run and resume flow still reaches the expected terminal states. |
-| `tests/unit/test_truth_layer.py` | `WorkspaceLayout` bootstraps `.railforge/{runtime,product,planning,execution}` correctly. |
-| `tests/unit/test_file_lock_and_execution.py` | Execution and review services forward `.railforge/execution/tasks/...` writable paths. |
+| `tests/unit/test_truth_layer.py` | Repo truth roots plus run-first runtime roots are bootstrapped correctly. |
+| `tests/unit/test_file_lock_and_execution.py` | Execution and review services forward run-keyed runtime artifact paths through the router instead of legacy execution/task paths. |
 | `tests/unit/test_codeagent_real_failures.py` | Codex 兼容层不会继续发出 `xhigh`，Gemini 超时会返回结构化失败。 |
 
 ## Recommended Checks
 
 - Run unit tests first when changing path layout or artifact storage.
 - Run integration smoke tests after moving docs or changing skill wrappers.
-- Run the full test suite after any change to `WorkspaceLayout`, artifact store, or run loop path semantics.
+- Run the full test suite after any change to runtime layout, artifact routing, or run loop path semantics.
 - Re-run hosted Codex protocol tests whenever `rf-execute`, `prepare-execution`, or `record-execution` changes.
 
 ## Installer / MCP Scope

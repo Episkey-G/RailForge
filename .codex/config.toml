@@ -1,0 +1,22 @@
+[project]
+name = "RailForge"
+workflow = "codex-first-harness"
+default_skill = "rf-status"
+
+[execution]
+provider = "hosted_codex"
+sandbox = "workspace-write"
+approval_policy = "on-request"
+default_workflow = "rf-spec-init -> rf-spec-research -> rf-spec-plan -> rf-spec-impl -> rf-spec-review"
+
+[paths]
+runtime_root = ".railforge/runtime"
+knowledge_roots = ["AGENTS.md", "docs/", "openspec/changes/"]
+skill_root = ".agents/skills"
+agent_root = ".codex/agents"
+
+[guardrails]
+lead_writer_role = "lead-writer"
+require_contract_approval = true
+enforce_single_writer = true
+deterministic_gates_first = true

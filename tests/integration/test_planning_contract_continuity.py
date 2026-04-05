@@ -14,6 +14,10 @@ def _run(*args: str) -> subprocess.CompletedProcess[str]:
     )
 
 
+def _active_run_id(workspace: Path) -> str:
+    return yaml.safe_load((workspace / ".railforge" / "runtime" / "current_run.json").read_text(encoding="utf-8"))["run_id"]
+
+
 def test_spec_plan_uses_ready_planning_contract_scope_for_site_delivery(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
 
@@ -28,7 +32,7 @@ def test_spec_plan_uses_ready_planning_contract_scope_for_site_delivery(tmp_path
     assert research.stdout.strip().endswith("BLOCKED")
 
     _run("approve", "--workspace", str(workspace), "--target", "spec")
-    planning_dir = workspace / ".railforge" / "planning"
+    planning_dir = workspace / "docs" / "exec-plans" / "active"
     planning_dir.mkdir(parents=True, exist_ok=True)
     contract_path = planning_dir / "contract.yaml"
     contract_path.write_text(
@@ -40,7 +44,7 @@ def test_spec_plan_uses_ready_planning_contract_scope_for_site_delivery(tmp_path
                     "allowed_paths": [
                         str(workspace / "site" / "**"),
                         str(workspace / "openspec" / "changes" / "PulseNotch" / "**"),
-                        str(workspace / ".railforge" / "planning" / "**"),
+                        str(workspace / "docs" / "exec-plans" / "active" / "**"),
                     ]
                 },
                 "deliverables": [
@@ -62,7 +66,18 @@ def test_spec_plan_uses_ready_planning_contract_scope_for_site_delivery(tmp_path
     result = _run("spec-plan", "--workspace", str(workspace))
 
     backlog = yaml.safe_load((planning_dir / "backlog.draft.yaml").read_text(encoding="utf-8"))
-    contract = yaml.safe_load((workspace / ".railforge" / "execution" / "tasks" / "T-001" / "contract.yaml").read_text(encoding="utf-8"))
+    contract = yaml.safe_load(
+        (
+            workspace
+            / ".railforge"
+            / "runtime"
+            / "runs"
+            / _active_run_id(workspace)
+            / "tasks"
+            / "T-001"
+            / "contract.yaml"
+        ).read_text(encoding="utf-8")
+    )
 
     assert result.returncode == 0
     assert result.stdout.strip().endswith("BLOCKED")

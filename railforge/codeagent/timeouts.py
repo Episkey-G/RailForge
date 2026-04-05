@@ -1,5 +1,6 @@
 DEFAULT_TIMEOUTS = {
     "codex": 180,
+    "hosted_codex": 180,
     "claude": 120,
     "gemini": 90,
 }

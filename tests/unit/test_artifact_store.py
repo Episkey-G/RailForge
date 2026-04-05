@@ -61,7 +61,8 @@ def test_artifact_store_roundtrip(tmp_path: Path) -> None:
     assert loaded_spec.acceptance_criteria == ["A", "B"]
     assert backlog["current_task"] == "T-001"
     assert loaded_contract.allowed_paths == ["backend/", "tests/"]
-    assert layout.run_state_path.exists()
+    assert layout.runtime_router.current_run_path.exists()
+    assert layout.runtime_router.run_state_path("run-1").exists()
     assert layout.product_spec_draft_path.exists()
     assert layout.product_spec_path.exists()
     assert layout.backlog_draft_path.exists()
@@ -86,6 +87,6 @@ def test_checkpoint_store_saves_incremental_snapshots(tmp_path: Path) -> None:
 
     assert checkpoint.sequence == 1
     assert checkpoint.path.exists()
-    latest = checkpoint_store.load_latest()
+    latest = checkpoint_store.load_latest("run-1")
     assert latest["run_state"]["state"] == "SPEC_EXPANSION"
     assert latest["langgraph"] == {"thread_id": "t-1", "checkpoint_ref": "c-1"}

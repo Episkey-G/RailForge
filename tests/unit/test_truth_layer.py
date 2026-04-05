@@ -11,9 +11,9 @@ def test_truth_layer_bootstraps_docs_and_runtime_paths(tmp_path: Path) -> None:
     store.init_workspace()
 
     assert layout.runtime == tmp_path / ".railforge" / "runtime"
-    assert layout.product_dir == tmp_path / ".railforge" / "product"
-    assert layout.planning_dir == tmp_path / ".railforge" / "planning"
-    assert layout.execution_dir == tmp_path / ".railforge" / "execution"
+    assert layout.product_dir == tmp_path / "docs" / "product-specs" / "active"
+    assert layout.planning_dir == tmp_path / "docs" / "exec-plans" / "active"
+    assert layout.execution_dir == tmp_path / ".railforge" / "runtime" / "execution"
     assert layout.runtime.exists()
     assert layout.product_dir.exists()
     assert layout.planning_dir.exists()

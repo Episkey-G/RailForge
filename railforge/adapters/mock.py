@@ -1,5 +1,6 @@
 from dataclasses import dataclass
-from typing import Dict, List, Optional
+import re
+from typing import Any, Dict, List, Optional
 
 from railforge.adapters.base import HarnessServices, LeadWriterAdapter, SpecialistAdapter
 from railforge.adapters.git import DryRunGitAdapter
@@ -120,6 +121,76 @@ class MockSpecialistAdapter(SpecialistAdapter):
         )
 
 
+class MockClarificationAnalystAdapter:
+    def invoke(self, **kwargs: Dict[str, Any]) -> AdapterResult:
+        request_text = str(kwargs.get("context", {}).get("request_text") or kwargs.get("payload", {}).get("request_text") or "")
+        structured = self._build_payload(request_text)
+        return AdapterResult(
+            success=True,
+            summary="clarification payload prepared",
+            metadata={"structured": structured},
+        )
+
+    def _build_payload(self, request_text: str) -> Dict[str, Any]:
+        segments = [item.strip() for item in re.split(r"[。！？!?\\.,，、；;\n]+", request_text) if item.strip()]
+        if not segments:
+            segments = [request_text.strip() or "待补充需求"]
+
+        questions: List[Dict[str, str]] = []
+        decisions: List[Dict[str, str]] = []
+
+        if "人工确认" in request_text or "业务口径" in request_text:
+            questions.append(
+                {
+                    "id": "Q-001",
+                    "prompt": "请确认业务规则口径。",
+                    "category": "clarification",
+                    "blocking_reason": "业务规则需要人工确认后才能进入 planning。",
+                    "source": "request contains explicit human confirmation language",
+                }
+            )
+        if "时区" in request_text:
+            questions.append(
+                {
+                    "id": "Q-002",
+                    "prompt": "请确认时区规则。",
+                    "category": "timezone",
+                    "default": "UTC",
+                    "blocking_reason": "时间口径会影响后端校验和测试基线。",
+                    "source": "request mentions timezone-sensitive behavior",
+                }
+            )
+            decisions.append(
+                {
+                    "id": "D-001",
+                    "topic": "时区规则",
+                    "options": "UTC 或按产品业务时区",
+                    "source": "request mentions timezone-sensitive behavior",
+                }
+            )
+        if ("提示" in request_text or "错误" in request_text) and "文案" in request_text:
+            questions.append(
+                {
+                    "id": "Q-003",
+                    "prompt": "请确认错误提示文案。",
+                    "category": "copy",
+                    "blocking_reason": "错误提示属于实现 contract 的可见行为。",
+                    "source": "request asks for user-visible error copy",
+                }
+            )
+
+        return {
+            "enhanced_request": "；".join(segments),
+            "acceptance_criteria": segments,
+            "constraints": [],
+            "assumptions": [],
+            "resolved_by_default": [],
+            "open_questions": questions,
+            "decisions": decisions,
+            "can_proceed": not questions,
+        }
+
+
 def _default_plans() -> Dict[str, List[MockAttempt]]:
     failure_signature = build_failure_signature(
         failed_tests=["tests/test_due_date.py::test_rejects_past_due_date"],
@@ -179,10 +250,9 @@ def _default_plans() -> Dict[str, List[MockAttempt]]:
         "T-003": [
             MockAttempt(
                 summary="verification coverage and regression tests updated",
-                changed_files=["tests/test_regression.py", ".railforge/tasks/T-003/logs/qa.txt"],
+                changed_files=["tests/test_regression.py"],
                 writes={
                     "tests/test_regression.py": "def test_regression():\n    assert True\n",
-                    ".railforge/tasks/T-003/logs/qa.txt": "qa prepared\n",
                 },
                 runtime_status="passed",
                 runtime_summary="pytest regression suite passed",
@@ -232,6 +302,7 @@ def build_default_mock_services() -> HarnessServices:
         playwright=NoopPlaywrightAdapter(),
         backend_evaluator=MockSpecialistAdapter("Backend Evaluator"),
         frontend_evaluator=MockSpecialistAdapter("Frontend Evaluator"),
+        clarification_analyst=MockClarificationAnalystAdapter(),
     )
 
 
@@ -245,6 +316,7 @@ class RecoverableMockServices(object):
         self.git = DryRunGitAdapter()
         self.shell = LocalShellAdapter()
         self.playwright = NoopPlaywrightAdapter()
+        self.clarification_analyst = MockClarificationAnalystAdapter()
 
     def allow_recovery(self) -> None:
         self.lead_writer.allow_recovery()
@@ -266,4 +338,5 @@ def build_hosted_smoke_services() -> HarnessServices:
         playwright=NoopPlaywrightAdapter(),
         backend_evaluator=backend,
         frontend_evaluator=frontend,
+        clarification_analyst=MockClarificationAnalystAdapter(),
     )

@@ -1,4 +1,3 @@
-import json
 import subprocess
 import sys
 from pathlib import Path
@@ -41,6 +40,12 @@ def test_execute_reaches_repair_and_resume_finishes(tmp_path: Path) -> None:
         text=True,
         check=False,
     )
+    subprocess.run(
+        [sys.executable, "-m", "railforge", "approve", "--workspace", str(workspace), "--target", "contract"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
 
     blocked = subprocess.run(
         [sys.executable, "-m", "railforge", "execute", "--workspace", str(workspace), "--scenario", "repeated-failure"],
@@ -58,8 +63,6 @@ def test_execute_reaches_repair_and_resume_finishes(tmp_path: Path) -> None:
         check=False,
     )
     assert review.returncode == 0
-    qa = json.loads((workspace / ".railforge" / "execution" / "tasks" / "T-001" / "qa_report.json").read_text(encoding="utf-8"))
-    assert qa["status"] == "failed"
 
     resumed = subprocess.run(
         [

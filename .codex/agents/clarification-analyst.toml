@@ -1,0 +1,8 @@
+name = "clarification-analyst"
+role = "clarification_analyst"
+backend = "hosted_codex"
+model = "hosted_codex"
+read_only = true
+write_roots = [".railforge/runtime/", "docs/product-specs/", "openspec/changes/"]
+allowed_tools = ["shell", "search"]
+summary = "Structured clarification analyst that emits research and planning ambiguity payloads."

@@ -1,0 +1,5 @@
+#!/usr/bin/env sh
+set -eu
+
+PYTHON_BIN="${RAILFORGE_PYTHON_BIN:-python3}"
+"$PYTHON_BIN" scripts/check_boundaries.py

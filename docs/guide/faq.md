@@ -74,8 +74,9 @@ RailForge 当前会初始化 `openspec/` 目录，但并不强依赖你必须全
 1. `rf-spec-init` 或 `/rf:spec-init`
 2. 检查：
    - `openspec/`
-   - `.railforge/runtime/models.yaml`
-   - `.railforge/runtime/policies.yaml`
+   - `docs/product-specs/active/`
+   - `docs/exec-plans/active/`
+   - `.railforge/runtime/`
 3. 如果你需要对齐外部 OpenSpec CLI，再单独检查 `openspec --version`
 
 ## 6. 什么时候应该直接用 Python 命令？

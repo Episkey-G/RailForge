@@ -35,6 +35,11 @@ def test_run_loop_blocks_then_resume_completes(tmp_path: Path) -> None:
     assert backlog_blocked.blocked_reason == "backlog_approval_required"
 
     store.save_approval("backlog", approved_by="human", note="backlog ok")
+    blocked = harness.resume(reason="backlog_approved", note="等待 contract approval")
+    assert blocked.state == RunState.BLOCKED
+    assert blocked.blocked_reason == "contract_approval_required"
+
+    store.save_approval("contract", approved_by="human", note="contract ok")
     blocked = harness.resume(reason="backlog_approved", note="开始执行")
     assert blocked.state == RunState.BLOCKED
     assert blocked.blocked_reason in {"repair_budget_exhausted", "same_failure_signature", "repair_blocked"}

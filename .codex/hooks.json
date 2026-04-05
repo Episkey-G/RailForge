@@ -1,0 +1,22 @@
+{
+  "before_phase": {
+    "description": "Assemble a phase-specific context pack before every major workflow phase.",
+    "action": "railforge status --workspace ."
+  },
+  "after_phase": {
+    "description": "Persist summary state and observability snapshots after phase transitions.",
+    "action": "railforge review --workspace ."
+  },
+  "before_commit": {
+    "description": "Require aggregate verdict approval before commit gating.",
+    "action": "railforge spec-review --workspace ."
+  },
+  "on_blocked": {
+    "description": "Record the blocker and direct the user to rf-resume or the missing approval.",
+    "action": "railforge status --workspace ."
+  },
+  "on_failed": {
+    "description": "Persist failure attribution and surface the next repair or escalation step.",
+    "action": "railforge review --workspace ."
+  }
+}

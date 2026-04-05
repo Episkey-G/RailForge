@@ -1,0 +1,8 @@
+name = "frontend-evaluator"
+role = "frontend_evaluator"
+backend = "gemini_cli"
+model = "gemini_cli"
+read_only = true
+write_roots = [".railforge/runtime/execution/tasks/"]
+allowed_tools = ["shell", "playwright", "search"]
+summary = "Independent frontend evaluator for post-deterministic compliance review."

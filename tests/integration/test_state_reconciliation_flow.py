@@ -32,16 +32,18 @@ def test_reconciliation_updates_block_reason_and_clears_interrupts(tmp_path: Pat
     assert blocked.state == RunState.BLOCKED
     assert blocked.blocked_reason == "backlog_approval_required"
 
-    interrupt_path = workspace / ".railforge" / "runtime" / "interrupts" / "blocked_interrupt.json"
+    run_id = store.load_run_state().run_id
+    interrupt_path = workspace / ".railforge" / "runtime" / "notes" / run_id / "interrupts" / "blocked_interrupt.json"
     interrupt = json.loads(interrupt_path.read_text(encoding="utf-8"))
     assert interrupt["reason"] == "backlog_approval_required"
 
     store.save_approval("backlog", approved_by="human", note="backlog ok")
+    store.save_approval("contract", approved_by="human", note="contract ok")
     done = harness.resume(reason="backlog_approved", note="continue")
     assert done.state == RunState.DONE
     assert not interrupt_path.exists()
 
-    run_state_path = workspace / ".railforge" / "runtime" / "run_state.json"
+    run_state_path = workspace / ".railforge" / "runtime" / "runs" / run_id / "run_state.json"
     stale = store.load_run_state().to_dict()
     stale["state"] = "BLOCKED"
     stale["blocked_reason"] = "clarification_required"

@@ -26,7 +26,7 @@ rf-spec-init
 最佳实践：
 
 - 确认 `openspec/` 已创建
-- 确认 `.railforge/runtime/models.yaml` 和 `.railforge/runtime/policies.yaml` 已创建
+- 确认 `docs/product-specs/active/`、`docs/exec-plans/active/`、`docs/quality/active/` 与 `.railforge/runtime/` 已初始化
 - 确认 `codex / claude / gemini / jq / python / node` 都能被 `doctor` 检出
 
 不要跳过初始化直接进入 `spec-research`。
@@ -57,7 +57,7 @@ rf-spec-init
 - 进入 `spec-plan` 前先完成 `spec-research` 的关键澄清
 - 把实现阶段会拍脑袋的决策前移到这里
 - 审查 OpenSpec 里的 `design.md / tasks.md / spec.md`
-- 审查 `.railforge/planning/backlog.yaml` 和 task contract
+- 审查 `docs/exec-plans/active/backlog.yaml` 和 task contract
 
 如果计划还存在关键歧义，不要进入 `spec-impl`。
 
@@ -70,6 +70,7 @@ rf-spec-init
 - Python 内核负责状态机和工件
 - 当前 Codex 主会话负责主写作
 - `Claude / Gemini` 负责外部 review / evaluator
+- runtime 工件会按 semantic-rooted、run-first 目录落盘，而不是写回旧 task-first 路径
 
 最佳实践：
 
@@ -192,6 +193,8 @@ RailForge 的 `BLOCKED` 是正常状态，不是异常退出。
 - 统一保留 OpenSpec 与 `.railforge/`
 - 统一在 review 通过前不归档
 - 统一记录 HITL 决策，不口头跳过
+- 统一把 `.railforge/runtime/` 视为运行态层，不把它当长期知识真源
+- 统一禁止继续向旧 `.railforge/execution/*` 或 `runtime/execution/tasks/*` 追加兼容写入
 
 如果团队里有人直接跳过 `spec-research / spec-plan` 进入实现，这套工作流很快就会退化成普通脚本集合。
 

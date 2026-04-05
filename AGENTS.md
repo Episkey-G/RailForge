@@ -17,5 +17,8 @@
 - `rf-execute` / `rf-review` 作为低层调试入口保留，不是推荐主线。
 - 默认 lead writer 路径是 `hosted_codex`，`railforge.codeagent` 中的 Codex 路径只作为 fallback/headless runner。
 - `spec-research` 阶段必须整理 HITL 问题、范围边界和未决假设；这些问题没有澄清之前，不进入 `execute`。
-- `spec-review` 会主动重跑双模型评估，并在 backlog 清空后写出 `.railforge/execution/final_review.json` 作为最终闸门。
+- `spec-review` 会主动重跑双模型评估，并在 backlog 清空后写出 `docs/quality/active/final_review.json` 作为最终闸门。
+- `docs/product-specs/active/`、`docs/exec-plans/active/`、`docs/quality/active/` 与 `openspec/changes/` 是长期知识真源；`.railforge/runtime/` 只保留运行态。
+- runtime 拓扑采用 run-first、semantic-rooted 布局：目录先表达工件语义，再按 `run_id` 归档；`task_id` 只作为 run 下的子维度。
+- 兼容层只允许 legacy read，不允许继续向旧 `.railforge/execution/*`、`runtime/execution/tasks/*` 或 runtime 根 hosted execution 文件写入。
 - 只修改被明确授权的文件，避免回滚他人工作。

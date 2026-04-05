@@ -28,7 +28,7 @@ def test_file_checkpoint_store_persists_langgraph_refs(tmp_path: Path) -> None:
         langgraph_ref={"thread_id": "t-1", "checkpoint_ref": "c-1"},
     )
 
-    latest = store.load_latest()
+    latest = store.load_latest("run-1")
     assert latest["langgraph"]["thread_id"] == "t-1"
     assert latest["langgraph"]["checkpoint_ref"] == "c-1"
 
@@ -64,7 +64,7 @@ def test_file_checkpoint_store_persists_resume_and_git_truth(tmp_path: Path) -> 
         git_state={"available": False, "dirty": False, "head": None, "branch": None, "status": []},
     )
 
-    latest = store.load_latest()
+    latest = store.load_latest("run-1")
     assert latest["resume"]["blocked_reason"] == "hosted_execution_required"
     assert latest["resume"]["resume_from_state"] == "IMPLEMENTING"
     assert latest["git"]["available"] is False

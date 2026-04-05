@@ -7,18 +7,21 @@ The workflow is split into explicit stages so research, planning, execution, rev
 
 ## Workflow Model
 
-1. `spec-research` collects context, constraints, and HITL questions.
-2. `spec-plan` turns the research into an ordered implementation plan.
-3. `execute` uses hosted Codex by default through the `prepare-execution / record-execution` handshake.
-4. `review` checks the result against the plan and calls out gaps.
-5. `resume` continues a blocked or paused workflow after human input.
-6. `status` reports the current state without changing anything.
+1. `spec-init` initializes workspace truth roots and runtime scaffolding.
+2. `spec-research` collects context, constraints, and HITL questions.
+3. `spec-plan` turns the research into an ordered implementation plan.
+4. `spec-impl` uses hosted Codex by default through the `prepare-execution / record-execution` handshake.
+5. `spec-review` checks the result against the plan and emits the final quality gate.
+6. `resume` continues a blocked or paused workflow after human input.
+7. `status` reports the current state without changing anything.
 
 ## Truth Layers
 
 - `docs/architecture/` stores long-lived project documentation that belongs in version control.
-- `.railforge/` stores runtime truth, including spec drafts, backlog artifacts, task execution output, approvals, and checkpoints.
+- `docs/` and `openspec/changes/` store long-lived repository truth; `.railforge/runtime/` stores runtime execution output, approvals, traces, and checkpoints.
 - `.agents/skills/` stores workflow entrypoints for Codex CLI and remains part of the formal project repository.
+- Runtime artifact layout is semantic-rooted and run-keyed: artifact type first, `run_id` second, `task_id` only where task-scoped data exists.
+- Legacy runtime paths are read-only compatibility inputs, not valid write targets.
 
 ## HITL Planning Stage
 
@@ -32,4 +35,4 @@ If a question affects scope, risk, or architecture, it belongs in the research o
 - `railforge.codeagent` is the external runner subsystem for `Claude / Gemini` and Codex fallback.
 - Hosted Codex is the default lead writer path and is coordinated by the skill layer, not by spawning `codex exec` as the primary path.
 - Internal package layering stays explicit: `core`、`artifacts`、`orchestrator`、`planner`、`evaluator`、`execution`、`infra`。
-- Runtime code must not write generated artifacts into `docs/`; generated output belongs under `.railforge/`.
+- Runtime code must keep transient execution output under `.railforge/runtime/`; durable spec, planning, and quality artifacts belong under `docs/` or `openspec/changes/`.

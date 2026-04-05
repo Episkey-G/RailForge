@@ -5,6 +5,7 @@ from typing import Optional
 
 BACKEND_ALIASES = {
     "codex_cli": "codex",
+    "hosted_codex": "codex",
     "claude_cli": "claude",
     "gemini_cli": "gemini",
 }

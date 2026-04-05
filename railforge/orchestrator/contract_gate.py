@@ -32,6 +32,14 @@ class ContractGate:
             errors.append("missing_writeback_requirements")
         if "lead_writer" not in contract.role_boundaries:
             errors.append("missing_lead_writer_boundary")
+        if "backend_specialist" not in contract.role_boundaries:
+            errors.append("missing_backend_specialist_boundary")
+        if "frontend_specialist" not in contract.role_boundaries:
+            errors.append("missing_frontend_specialist_boundary")
+        if "backend_evaluator" not in contract.role_boundaries:
+            errors.append("missing_backend_evaluator_boundary")
+        if "frontend_evaluator" not in contract.role_boundaries:
+            errors.append("missing_frontend_evaluator_boundary")
 
         unknown_paths = [path for path in contract.allowed_paths if path not in task.allowed_paths]
         if unknown_paths:
