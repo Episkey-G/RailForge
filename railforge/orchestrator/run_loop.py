@@ -428,7 +428,21 @@ class RailForgeHarness:
             )
             self.interrupts.record_unblock(reason=reason, note=note)
             self.interrupts.clear_blocked()
-            self.run_meta.state = RunState(self.run_meta.resume_from_state)
+            target_state = RunState(self.run_meta.resume_from_state)
+            # 恢复到 STATIC_REVIEW 时需要确保 _last_implementation 存在
+            if target_state == RunState.STATIC_REVIEW and self._last_implementation is None:
+                self._last_implementation = AdapterResult(
+                    success=True,
+                    summary="manual repair: %s" % note,
+                    changed_files=[],
+                    metadata={
+                        "mode": "manual_repair_resume",
+                        "recorded": True,
+                        "runtime_status": "passed",
+                        "runtime_summary": "manual repair accepted: %s" % note,
+                    },
+                )
+            self.run_meta.state = target_state
             self.run_meta.blocked_reason = None
             self.run_meta.repair_count = 0
             self.run_meta.last_failure_signature = None
@@ -495,6 +509,72 @@ class RailForgeHarness:
             self._snapshot()
             return self._drive()
 
+    def adopt_worktree(self, task_id: str, note: str) -> RunMeta:
+        """吸收人工修复：不调用 lead writer，直接将当前 diff 作为实现结果并跳到 STATIC_REVIEW"""
+        self.store.init_workspace()
+        with self.lock:
+            self._recover_runtime()
+            # 只允许在 repair 相关的 blocked 状态下使用
+            if self.run_meta.state == RunState.BLOCKED and self.run_meta.blocked_reason not in {
+                "repair_budget_exhausted",
+                "repeated_failure_signature",
+                "manual_repair_required",
+                "repair_blocked",
+            }:
+                raise ResumeError(
+                    "adopt-worktree only allowed after repair exhaustion, current blocked_reason: %s"
+                    % self.run_meta.blocked_reason
+                )
+            self.run_meta.current_task_id = task_id
+            task = self._current_task()
+            contract = self._current_contract()
+            in_scope, out_of_scope = self._partition_changed_files(task, contract)
+            if out_of_scope:
+                raise ResumeError(
+                    "adopt-worktree rejected: out-of-scope changes detected: %s. "
+                    "Clean these files before adopting." % ", ".join(out_of_scope)
+                )
+            self._last_implementation = AdapterResult(
+                success=True,
+                summary="manual repair: %s" % note,
+                changed_files=in_scope,
+                metadata={
+                    "mode": "manual_adoption",
+                    "recorded": True,
+                    "runtime_status": "pending_review",
+                    "runtime_summary": note,
+                },
+            )
+            self.store.save_trace(task_id, "manual_adoption.json", {
+                "task_id": task_id,
+                "note": note,
+                "changed_files": in_scope,
+                "out_of_scope_changes": out_of_scope,
+            })
+            self.run_meta.state = RunState.STATIC_REVIEW
+            self.run_meta.blocked_reason = None
+            self.run_meta.recovery_action = None
+            self.run_meta.resume_from_state = None
+            self.interrupts.clear_blocked()
+            self.store.save_run_state(self.run_meta)
+            self._snapshot()
+            return self._drive()
+
+    def _partition_changed_files(self, task: TaskItem, contract: ContractSpec) -> tuple:
+        """扫描全部 changed files，划分 in-scope 和 out-of-scope"""
+        in_scope: List[str] = []
+        out_of_scope: List[str] = []
+        git = self.services.git
+        if hasattr(git, "changed_files"):
+            all_changed = git.changed_files(self.layout.root)
+            allowed = contract.allowed_paths or task.allowed_paths
+            for f in all_changed:
+                if any(f.startswith(prefix) for prefix in allowed):
+                    in_scope.append(f)
+                else:
+                    out_of_scope.append(f)
+        return in_scope, out_of_scope
+
     def _drive(self) -> RunMeta:
         while self.run_meta and self.run_meta.state not in terminal_states():
             state = self.run_meta.state
@@ -538,6 +618,7 @@ class RailForgeHarness:
         self.run_meta.state = nxt
         if nxt != RunState.BLOCKED:
             self.run_meta.blocked_reason = None
+            self.run_meta.recovery_action = None
             self.run_meta.resume_from_state = None
             self.interrupts.clear_blocked()
         self.store.save_run_state(self.run_meta)
@@ -791,6 +872,20 @@ class RailForgeHarness:
                 task_id=task.id,
             )
             return
+        # repo reality audit: 委托 ContractGate 校验 allowed_paths 真实存在
+        reality_error = self.contract_gate.validate_repo_reality(
+            workspace_root=self.layout.root,
+            contract=contract,
+            task=task,
+        )
+        if reality_error:
+            self._block(
+                reason="planning_execution_scope_mismatch",
+                resume_from_state=RunState.CONTRACT_NEGOTIATION,
+                note=reality_error,
+                task_id=task.id,
+            )
+            return
         self.store.save_contract(contract)
         self._transition(RunState.IMPLEMENTING)
 
@@ -1011,10 +1106,11 @@ class RailForgeHarness:
             current_signature=qa_report.failure_signature or "",
         )
         if decision.blocked:
+            self.run_meta.recovery_action = "manual_repair"
             self._block(
                 reason=decision.reason or "repair_blocked",
-                resume_from_state=RunState.IMPLEMENTING,
-                note="repair loop exhausted or failure signature repeated",
+                resume_from_state=RunState.STATIC_REVIEW,
+                note="repair budget exhausted or failure repeated; manual repair required, resume will skip to review",
                 task_id=task.id,
             )
             return

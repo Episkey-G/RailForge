@@ -188,7 +188,7 @@ def test_aggregate_verdict_blocks_commit_after_evaluator_failure(tmp_path: Path)
     assert backend_eval.calls > 0
     assert frontend_eval.calls > 0
     assert run_meta.commit_log == []
-    assert run_meta.blocked_reason in {"same_failure_signature", "repair_budget_exhausted", "repair_blocked"}
+    assert run_meta.blocked_reason in {"same_failure_signature", "repair_budget_exhausted", "repair_blocked", "repeated_failure_signature"}
 
 
 def test_claude_provider_recovers_fenced_json_summary() -> None:

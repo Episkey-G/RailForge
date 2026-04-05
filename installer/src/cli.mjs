@@ -67,7 +67,65 @@ function installState(target) {
   return fs.existsSync(modelsPath)
 }
 
+function mcpCatalogPathFor(target) {
+  return path.join(target, '.codex', '.railforge', 'mcp.json')
+}
+
+function loadExistingMcpCatalog(target) {
+  const filePath = mcpCatalogPathFor(target)
+  if (!fs.existsSync(filePath)) {
+    return {}
+  }
+  try {
+    const payload = JSON.parse(fs.readFileSync(filePath, 'utf8'))
+    return payload.mcpServers || {}
+  }
+  catch {
+    return {}
+  }
+}
+
+function findArgValue(args = [], flag) {
+  const index = args.indexOf(flag)
+  if (index === -1 || index + 1 >= args.length) {
+    return ''
+  }
+  return args[index + 1] || ''
+}
+
+function configuredRetrievalTool(servers) {
+  for (const tool of ['ace-tool-rs', 'ace-tool', 'fast-context', 'contextweaver']) {
+    if (servers[tool]) return tool
+  }
+  return null
+}
+
+function configuredAuxiliaryTools(servers) {
+  const mapping = {
+    context7: 'Context7',
+    playwright: 'Playwright',
+    deepwiki: 'mcp-deepwiki',
+    exa: 'exa',
+  }
+  return Object.entries(mapping)
+    .filter(([, serverId]) => Boolean(servers[serverId]))
+    .map(([tool]) => tool)
+}
+
+function maskSecret(value) {
+  if (!value) return '(empty)'
+  if (value.length <= 8) return '********'
+  return `${value.slice(0, 4)}***${value.slice(-4)}`
+}
+
+function printConfigSummary(lines) {
+  for (const line of lines.filter(Boolean)) {
+    console.log(`    - ${line}`)
+  }
+}
+
 async function runInitWizard(target, inquirer) {
+  const existingMcpServers = loadExistingMcpCatalog(target)
   console.log()
   console.log('  🔑 Step 1/6 — 配置 Codex 主写作模型')
   console.log()
@@ -122,60 +180,121 @@ async function runInitWizard(target, inquirer) {
       { name: 'ContextWeaver', value: 'contextweaver' },
       { name: '跳过', value: 'skip' },
     ],
-    default: 'ace-tool',
+    default: configuredRetrievalTool(existingMcpServers) || 'ace-tool',
   }])
 
   let retrievalOptions = {}
   if (retrievalAnswer.tool === 'ace-tool' || retrievalAnswer.tool === 'ace-tool-rs') {
-    retrievalOptions = await inquirer.prompt([
-      { type: 'input', name: 'baseUrl', message: 'Base URL (中转服务必填，官方留空)', default: '' },
-      { type: 'password', name: 'token', message: 'Token (必填)', mask: '*' },
-    ])
+    const existing = existingMcpServers[retrievalAnswer.tool]
+    if (existing) {
+      console.log(`  ✓ 检测到现有 ${retrievalAnswer.tool} 配置，沿用当前设置`)
+      retrievalOptions = {
+        baseUrl: findArgValue(existing.args || [], '--base-url'),
+        token: findArgValue(existing.args || [], '--token'),
+      }
+      printConfigSummary([
+        `Base URL: ${retrievalOptions.baseUrl || '(empty)'}`,
+        `Token: ${maskSecret(retrievalOptions.token)}`,
+      ])
+    }
+    else {
+      retrievalOptions = await inquirer.prompt([
+        { type: 'input', name: 'baseUrl', message: 'Base URL (中转服务必填，官方留空)', default: '' },
+        { type: 'password', name: 'token', message: 'Token (必填)', mask: '*' },
+      ])
+    }
   }
   else if (retrievalAnswer.tool === 'fast-context') {
-    retrievalOptions = await inquirer.prompt([
-      { type: 'input', name: 'apiKey', message: 'WINDSURF_API_KEY (可选)', default: '' },
-      { type: 'confirm', name: 'includeSnippets', message: '返回完整代码片段？', default: false },
-    ])
+    const existing = existingMcpServers['fast-context']
+    if (existing) {
+      console.log('  ✓ 检测到现有 fast-context 配置，沿用当前设置')
+      retrievalOptions = {
+        apiKey: (existing.env || {}).WINDSURF_API_KEY || '',
+        includeSnippets: (existing.env || {}).FC_INCLUDE_SNIPPETS === 'true',
+      }
+      printConfigSummary([
+        `WINDSURF_API_KEY: ${maskSecret(retrievalOptions.apiKey)}`,
+        `Include snippets: ${retrievalOptions.includeSnippets ? 'Yes' : 'No'}`,
+      ])
+    }
+    else {
+      retrievalOptions = await inquirer.prompt([
+        { type: 'input', name: 'apiKey', message: 'WINDSURF_API_KEY (可选)', default: '' },
+        { type: 'confirm', name: 'includeSnippets', message: '返回完整代码片段？', default: false },
+      ])
+    }
   }
   else if (retrievalAnswer.tool === 'contextweaver') {
-    retrievalOptions = await inquirer.prompt([
-      { type: 'password', name: 'siliconflowApiKey', message: '硅基流动 API Key', mask: '*' },
-    ])
+    if (existingMcpServers.contextweaver) {
+      console.log('  ✓ 检测到现有 ContextWeaver 配置，沿用当前设置')
+      retrievalOptions = {}
+      printConfigSummary(['Config source: ~/.contextweaver/.env'])
+    }
+    else {
+      retrievalOptions = await inquirer.prompt([
+        { type: 'password', name: 'siliconflowApiKey', message: '硅基流动 API Key', mask: '*' },
+      ])
+    }
   }
 
   console.log()
   console.log('  🌐 Step 4/6 — 配置联网搜索 MCP')
   console.log()
-  const grokWant = await inquirer.prompt([{
-    type: 'confirm',
-    name: 'enabled',
-    message: '安装 grok-search 联网搜索 MCP？',
-    default: true,
-  }])
+  const existingGrok = existingMcpServers['grok-search']
+  const grokWant = existingGrok
+    ? { enabled: true }
+    : await inquirer.prompt([{
+        type: 'confirm',
+        name: 'enabled',
+        message: '安装 grok-search 联网搜索 MCP？',
+        default: true,
+      }])
   let grokOptions = {}
   if (grokWant.enabled) {
-    grokOptions = await inquirer.prompt([
-      { type: 'input', name: 'grokApiUrl', message: 'GROK_API_URL (可选)', default: '' },
-      { type: 'password', name: 'grokApiKey', message: 'GROK_API_KEY (可选)', mask: '*' },
-      { type: 'password', name: 'tavilyApiKey', message: 'TAVILY_API_KEY (可选)', mask: '*' },
-      { type: 'password', name: 'firecrawlApiKey', message: 'FIRECRAWL_API_KEY (可选)', mask: '*' },
-    ])
+    if (existingGrok) {
+      console.log('  ✓ 检测到现有 grok-search 配置，沿用当前设置')
+      const env = existingGrok.env || {}
+      grokOptions = {
+        grokApiUrl: env.GROK_API_URL || '',
+        grokApiKey: env.GROK_API_KEY || '',
+        tavilyApiKey: env.TAVILY_API_KEY || '',
+        firecrawlApiKey: env.FIRECRAWL_API_KEY || '',
+      }
+      printConfigSummary([
+        `GROK_API_URL: ${grokOptions.grokApiUrl || '(empty)'}`,
+        `GROK_API_KEY: ${maskSecret(grokOptions.grokApiKey)}`,
+        `TAVILY_API_KEY: ${maskSecret(grokOptions.tavilyApiKey)}`,
+        `FIRECRAWL_API_KEY: ${maskSecret(grokOptions.firecrawlApiKey)}`,
+      ])
+    }
+    else {
+      grokOptions = await inquirer.prompt([
+        { type: 'input', name: 'grokApiUrl', message: 'GROK_API_URL (可选)', default: '' },
+        { type: 'password', name: 'grokApiKey', message: 'GROK_API_KEY (可选)', mask: '*' },
+        { type: 'password', name: 'tavilyApiKey', message: 'TAVILY_API_KEY (可选)', mask: '*' },
+        { type: 'password', name: 'firecrawlApiKey', message: 'FIRECRAWL_API_KEY (可选)', mask: '*' },
+      ])
+    }
   }
 
   console.log()
   console.log('  🧰 Step 5/6 — 选择辅助 MCP')
   console.log()
+  const existingAuxiliary = configuredAuxiliaryTools(existingMcpServers)
+  if (existingAuxiliary.length > 0) {
+    console.log(`  ✓ 检测到现有辅助 MCP 配置：${existingAuxiliary.join(', ')}`)
+  }
   const auxiliaryAnswer = await inquirer.prompt([{
     type: 'checkbox',
     name: 'selected',
-    message: '选择要安装的辅助工具（空格选择，回车确认）',
+    message: '选择要额外安装的辅助工具（已存在的无需重复选择）',
     choices: [
       { name: 'Context7 - 获取最新库文档', value: 'context7' },
       { name: 'Playwright - 浏览器自动化/测试', value: 'playwright' },
       { name: 'DeepWiki - 知识库查询', value: 'deepwiki' },
       { name: 'Exa - 搜索引擎（需 API Key）', value: 'exa' },
     ],
+    default: [],
   }])
 
   console.log()
@@ -249,7 +368,15 @@ async function runInitWizard(target, inquirer) {
   for (const tool of auxiliaryAnswer.selected || []) {
     let options = {}
     if (tool === 'exa') {
-      options = await inquirer.prompt([{ type: 'password', name: 'exaApiKey', message: 'Exa API Key', mask: '*' }])
+      const existingExa = existingMcpServers.exa
+      if (existingExa && existingExa.env && existingExa.env.EXA_API_KEY) {
+        console.log('  ✓ 检测到现有 Exa API Key，沿用当前设置')
+        options = { exaApiKey: existingExa.env.EXA_API_KEY }
+        printConfigSummary([`EXA_API_KEY: ${maskSecret(options.exaApiKey)}`])
+      }
+      else {
+        options = await inquirer.prompt([{ type: 'password', name: 'exaApiKey', message: 'Exa API Key', mask: '*' }])
+      }
     }
     await configureAuxiliaryMcp(target, tool, options)
   }

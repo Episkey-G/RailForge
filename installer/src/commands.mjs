@@ -327,10 +327,11 @@ roles:
     model: gemini-3.1-pro-preview
 `
 
-const INSTALLER_VERSION = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version
-const RAILFORGE_BINARY_VERSION = INSTALLER_VERSION
+const INSTALLER_PACKAGE = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
+const INSTALLER_VERSION = INSTALLER_PACKAGE.version
+const RAILFORGE_BINARY_VERSION = INSTALLER_PACKAGE.railforgeBinaryVersion || INSTALLER_VERSION
 const GITHUB_REPO = 'Episkey-G/RailForge'
-const RELEASE_TAG = `railforge-v${RAILFORGE_BINARY_VERSION}`
+const RELEASE_TAG = 'railforge-preset'
 
 function platformSuffix() {
   const platform = process.platform === 'darwin'
@@ -734,6 +735,10 @@ function restoreTomlSection(content, sectionName, previous) {
   return lines.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd() + '\n'
 }
 
+function removeTomlSection(content, sectionName) {
+  return restoreTomlSection(content, sectionName, null)
+}
+
 async function patchCodexConfig(filePath, mcpConfig) {
   await ensureDir(path.dirname(filePath))
   const createdFile = !(await fileExists(filePath))
@@ -750,6 +755,22 @@ async function patchCodexConfig(filePath, mcpConfig) {
   }
 
   const sections = {}
+  const legacySectionsToRemove = [
+    'mcp_servers.context7',
+    'mcp_servers.context7.env',
+    'mcp_servers.playwright',
+    'mcp_servers.playwright.env',
+    'mcp_servers.ace-tool.env',
+    'mcp_servers.ace-tool-rs.env',
+    'mcp_servers.fast-context.env',
+    'mcp_servers.contextweaver.env',
+    'mcp_servers.grok-search.env',
+    'mcp_servers.exa.env',
+    'mcp_servers.mcp-deepwiki.env',
+  ]
+  for (const sectionName of legacySectionsToRemove) {
+    content = removeTomlSection(content, sectionName)
+  }
   for (const id of RAILFORGE_MCP_IDS) {
     if (mcpConfig.mcpServers && id in mcpConfig.mcpServers) {
       continue
@@ -1325,7 +1346,7 @@ roles:
 export async function writeMcpConfig(targetDir) {
   const paths = resolveInstallPaths(targetDir)
   await ensureDir(paths.railforgeRoot)
-  const mcpConfig = defaultMcpConfig()
+  const mcpConfig = await loadOrDefaultMcpConfig(paths.mcpCatalogPath)
   await fs.writeFile(paths.mcpCatalogPath, JSON.stringify(mcpConfig, null, 2), 'utf8')
 
   const state = await loadInstallerState(paths.statePath)
@@ -1417,7 +1438,7 @@ export async function initProject(targetDir) {
   await ensureDir(paths.railforgeRoot)
   await writeFile(paths.modelsPath, MODELS_YAML, installedFiles)
   await writeFile(paths.policiesPath, POLICIES_YAML, installedFiles)
-  const mcpConfig = defaultMcpConfig()
+  const mcpConfig = await loadOrDefaultMcpConfig(paths.mcpCatalogPath)
   await writeFile(paths.mcpCatalogPath, JSON.stringify(mcpConfig, null, 2), installedFiles)
 
   const skillCommands = {

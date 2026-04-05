@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import List
+from pathlib import Path
+from typing import List, Optional
 
 from railforge.core.errors import RailForgeError
 from railforge.core.models import ContractSpec, TaskItem
@@ -48,3 +49,27 @@ class ContractGate:
         if errors:
             raise ContractGateError(", ".join(errors))
         return contract
+
+    def validate_repo_reality(
+        self,
+        workspace_root: Path,
+        contract: ContractSpec,
+        task: TaskItem,
+    ) -> Optional[str]:
+        """校验 allowed_paths 在工作区中实际存在。仅对有 .git 的仓库生效。
+        返回 None 表示通过，否则返回错误描述。"""
+        if not (workspace_root / ".git").exists():
+            return None
+        creates_root_list = contract.writeback_requirements.get("creates_root", [])
+        missing_roots = []  # type: List[str]
+        for path_prefix in contract.allowed_paths:
+            target = workspace_root / path_prefix.rstrip("/")
+            creates_root = any(
+                cr.strip("/") == path_prefix.strip("/")
+                for cr in creates_root_list
+            )
+            if not creates_root and not target.exists():
+                missing_roots.append(path_prefix)
+        if missing_roots:
+            return "repo reality audit failed: paths do not exist in workspace: %s" % ", ".join(missing_roots)
+        return None

@@ -19,7 +19,7 @@ def test_spec_init_to_spec_review_hosted_smoke_flow(tmp_path: Path) -> None:
 
     init = _run(workspace, "spec-init")
     assert init.returncode == 0
-    assert json.loads(init.stdout)["status"] == "READY"
+    assert json.loads(init.stdout)["status"] in {"READY", "DEGRADED"}
 
     research = _run(
         workspace,

@@ -167,6 +167,7 @@ class RunMeta:
     repair_count: int = 0
     last_failure_signature: Optional[str] = None
     blocked_reason: Optional[str] = None
+    recovery_action: Optional[str] = None
     resume_from_state: Optional[str] = None
     commit_log: List[Dict[str, Any]] = field(default_factory=list)
     checkpoint_index: int = 0
@@ -189,6 +190,7 @@ class RunMeta:
             repair_count=data.get("repair_count", 0),
             last_failure_signature=data.get("last_failure_signature"),
             blocked_reason=data.get("blocked_reason"),
+            recovery_action=data.get("recovery_action"),
             resume_from_state=data.get("resume_from_state"),
             commit_log=data.get("commit_log", []),
             checkpoint_index=data.get("checkpoint_index", 0),

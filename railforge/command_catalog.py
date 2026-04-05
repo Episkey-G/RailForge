@@ -30,17 +30,17 @@ COMMAND_SPECS: Sequence[CommandSpec] = (
     CommandSpec(
         "spec-research",
         (
-            ArgumentSpec(("--workspace",), {"required": True}),
+            ArgumentSpec(("--workspace",), {"default": None}),
             ArgumentSpec(("--request",), {"required": True}),
             ArgumentSpec(("--project",), {}),
         ),
         needs_profile=True,
     ),
-    CommandSpec("spec-init", (ArgumentSpec(("--workspace",), {"required": True}),)),
+    CommandSpec("spec-init", (ArgumentSpec(("--workspace",), {"default": None}),)),
     CommandSpec(
         "spec-plan",
         (
-            ArgumentSpec(("--workspace",), {"required": True}),
+            ArgumentSpec(("--workspace",), {"default": None}),
             ArgumentSpec(("--reason",), {}),
             ArgumentSpec(("--note",), {}),
         ),
@@ -49,7 +49,7 @@ COMMAND_SPECS: Sequence[CommandSpec] = (
     CommandSpec(
         "spec-impl",
         (
-            ArgumentSpec(("--workspace",), {"required": True}),
+            ArgumentSpec(("--workspace",), {"default": None}),
             ArgumentSpec(("--reason",), {}),
             ArgumentSpec(("--note",), {}),
         ),
@@ -57,13 +57,13 @@ COMMAND_SPECS: Sequence[CommandSpec] = (
     ),
     CommandSpec(
         "spec-review",
-        (ArgumentSpec(("--workspace",), {"required": True}),),
+        (ArgumentSpec(("--workspace",), {"default": None}),),
         needs_profile=True,
     ),
     CommandSpec(
         "execute",
         (
-            ArgumentSpec(("--workspace",), {"required": True}),
+            ArgumentSpec(("--workspace",), {"default": None}),
             ArgumentSpec(("--reason",), {}),
             ArgumentSpec(("--note",), {}),
         ),
@@ -88,13 +88,13 @@ COMMAND_SPECS: Sequence[CommandSpec] = (
     ),
     CommandSpec(
         "review",
-        (ArgumentSpec(("--workspace",), {"required": True}),),
+        (ArgumentSpec(("--workspace",), {"default": None}),),
         needs_profile=True,
     ),
     CommandSpec(
         "resume",
         (
-            ArgumentSpec(("--workspace",), {"required": True}),
+            ArgumentSpec(("--workspace",), {"default": None}),
             ArgumentSpec(("--reason",), {"required": True}),
             ArgumentSpec(("--note",), {"required": True}),
         ),
@@ -110,18 +110,47 @@ COMMAND_SPECS: Sequence[CommandSpec] = (
     CommandSpec(
         "approve",
         (
-            ArgumentSpec(("--workspace",), {"required": True}),
+            ArgumentSpec(("--workspace",), {"default": None}),
             ArgumentSpec(("--target",), {"choices": ["spec", "backlog", "contract"], "required": True}),
             ArgumentSpec(("--task-id",), {}),
             ArgumentSpec(("--approved-by",), {}),
             ArgumentSpec(("--note",), {}),
         ),
     ),
-    CommandSpec("status", (ArgumentSpec(("--workspace",), {"required": True}),)),
+    CommandSpec("status", (ArgumentSpec(("--workspace",), {"default": None}),)),
+    CommandSpec(
+        "approve-and-resume",
+        (
+            ArgumentSpec(("--workspace",), {"default": None}),
+            ArgumentSpec(("--target",), {"choices": ["spec", "backlog", "contract"], "required": True}),
+            ArgumentSpec(("--task-id",), {}),
+            ArgumentSpec(("--approved-by",), {}),
+            ArgumentSpec(("--note",), {}),
+        ),
+        needs_profile=True,
+    ),
+    CommandSpec(
+        "answer-and-resume",
+        (
+            ArgumentSpec(("--workspace",), {"default": None}),
+            ArgumentSpec(("--file",), {"required": True}),
+            ArgumentSpec(("--note",), {}),
+        ),
+        needs_profile=True,
+    ),
+    CommandSpec(
+        "adopt-worktree",
+        (
+            ArgumentSpec(("--workspace",), {"default": None}),
+            ArgumentSpec(("--task-id",), {"required": True}),
+            ArgumentSpec(("--note",), {"default": "manual repair adopted"}),
+        ),
+        needs_profile=True,
+    ),
     CommandSpec(
         "run",
         (
-            ArgumentSpec(("--workspace",), {"required": True}),
+            ArgumentSpec(("--workspace",), {"default": None}),
             ArgumentSpec(("--request",), {"required": True}),
             ArgumentSpec(("--project",), {}),
         ),

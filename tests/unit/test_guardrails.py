@@ -53,4 +53,4 @@ def test_blocker_detector_sets_resume_state() -> None:
     )
     blocked = detect_blocker(run=run, task=_task(), repeated_failure=True)
     assert blocked.blocked is True
-    assert blocked.resume_from_state == "IMPLEMENTING"
+    assert blocked.resume_from_state == "STATIC_REVIEW"

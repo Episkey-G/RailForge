@@ -1,6 +1,7 @@
 {
   "name": "railforge-workflow",
-  "version": "0.1.8",
+  "version": "0.1.14",
+  "railforgeBinaryVersion": "0.1.7",
   "description": "RailForge spec workflow installer",
   "type": "module",
   "license": "MIT",

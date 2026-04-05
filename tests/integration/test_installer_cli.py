@@ -345,6 +345,44 @@ def test_installer_config_mcp_contextweaver_and_auxiliary(tmp_path: Path) -> Non
     assert gemini_payload["mcpServers"]["mcp-deepwiki"]["args"] == ["-y", "mcp-deepwiki@latest"] if "mcp-deepwiki" in gemini_payload["mcpServers"] else True
 
 
+def test_init_and_write_config_preserve_existing_mcp_catalog(tmp_path: Path) -> None:
+    target = tmp_path / "demo"
+    railforge_root = target / ".codex" / ".railforge"
+    railforge_root.mkdir(parents=True, exist_ok=True)
+    (railforge_root / "mcp.json").write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "ace-tool-rs": {
+                        "command": "npx",
+                        "args": ["ace-tool-rs", "--base-url", "https://acemcp.heroman.wtf/relay/", "--token", "abc"],
+                        "env": {"RUST_LOG": "info"},
+                    },
+                    "grok-search": {
+                        "command": "npx",
+                        "args": ["-y", "github:GuDaStudio/GrokSearch@grok-with-tavily", "grok-search"],
+                        "env": {"TAVILY_API_KEY": "tv-key"},
+                    },
+                    "Context7": {
+                        "command": "npx",
+                        "args": ["-y", "@upstash/context7-mcp@latest"],
+                    },
+                }
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    init_result = run_installer("init", "--target", str(target))
+    assert init_result.returncode == 0
+
+    payload = json.loads((railforge_root / "mcp.json").read_text(encoding="utf-8"))
+    assert "ace-tool-rs" in payload["mcpServers"]
+    assert payload["mcpServers"]["ace-tool-rs"]["args"][0] == "ace-tool-rs"
+    assert payload["mcpServers"]["grok-search"]["env"]["TAVILY_API_KEY"] == "tv-key"
+
+
 def test_installer_config_api_writes_claude_collaboration_settings(tmp_path: Path) -> None:
     target = tmp_path / "demo"
 
@@ -454,7 +492,7 @@ def test_installer_downloads_release_binaries_into_codex_bin(tmp_path: Path) -> 
 
     binary_template = """#!/bin/sh
 if [ "${1:-}" = "--version" ]; then
-  echo "0.1.8"
+  echo "0.1.7"
   exit 0
 fi
 echo "ok"
@@ -494,4 +532,10 @@ echo "ok"
     assert codeagent_bin.exists()
     assert payload["warnings"] == []
     assert {item["name"] for item in payload["binaries"]} == {"railforge", "railforge-codeagent"}
-    assert subprocess.run([str(railforge_bin), "--version"], capture_output=True, text=True, check=False).stdout.strip() == "0.1.8"
+    assert subprocess.run([str(railforge_bin), "--version"], capture_output=True, text=True, check=False).stdout.strip() == "0.1.7"
+
+
+def test_installer_uses_fixed_binary_release_tag() -> None:
+    text = (ROOT / "installer" / "src" / "commands.mjs").read_text(encoding="utf-8")
+
+    assert "const RELEASE_TAG = 'railforge-preset'" in text

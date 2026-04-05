@@ -3,7 +3,7 @@
 ## 版本
 
 - RailForge Python core: `0.1.7`
-- `railforge-workflow` installer: `0.1.8`
+- `railforge-workflow` installer: `0.1.13`
 
 ## 本次发布内容
 
@@ -79,7 +79,7 @@
 - `~/.codex/AGENTS.md`、`~/.codex/config.toml`、`~/.claude/.mcp.json`、`~/.gemini/settings.json` 改为增量写入与增量回滚
 - 默认 `npx railforge-workflow` 安装根改为用户主目录下的 `~/.codex`
 
-同时，`0.1.8` 延续并固化了安装器交互菜单修复：
+同时，`0.1.13` 延续并固化了安装器交互菜单修复：
 
 - 主菜单重新回到接近 CCG 的静态模板布局
 - 保留方向键交互，不再退回“输入编号或字母”
@@ -115,5 +115,5 @@
 
 ## 当前边界
 
-- `railforge-workflow` 已完成 `0.1.8` 发布前验证，等待 npm 发布
+- `railforge-workflow` 已完成 `0.1.13` 发布前验证，等待 npm 发布
 - 安装器已经可用，但与 CCG 的完整菜单深度和跨宿主自动化相比仍有继续迭代空间

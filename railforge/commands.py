@@ -66,3 +66,15 @@ def handle_review(args) -> int:
 
 def handle_spec_review(args) -> int:
     return _emit(create_workflow_command_service(Path(args.workspace)).spec_review(args))
+
+
+def handle_approve_and_resume(args) -> int:
+    return _emit(create_workflow_command_service(Path(args.workspace)).approve_and_resume(args))
+
+
+def handle_answer_and_resume(args) -> int:
+    return _emit(create_workflow_command_service(Path(args.workspace)).answer_and_resume(args))
+
+
+def handle_adopt_worktree(args) -> int:
+    return _emit(create_workflow_command_service(Path(args.workspace)).adopt_worktree(args))
