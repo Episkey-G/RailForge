@@ -14,6 +14,10 @@ from railforge.openspec_bridge import OpenSpecBridge
 from railforge.orchestrator.run_loop import RailForgeHarness
 from railforge.planner.change_renderer import render_design, render_proposal, render_spec, render_tasks
 from railforge.planner.contract_builder import build_contract
+from railforge.planner.planning_contract import load_planning_contract
+from railforge.infra.checkpoint_store import FileCheckpointStore
+from railforge.infra.langgraph_bridge import LangGraphBridge
+from railforge.infra.runtime_recovery import RuntimeRecovery
 
 
 def build_services(profile: str, scenario: str, workspace: Path) -> Any:
@@ -167,7 +171,21 @@ def handle_approve(args) -> int:
 
 def handle_status(args) -> int:
     workspace = Path(args.workspace)
-    payload = _load_run_state(workspace)
+    layout = WorkspaceLayout(workspace)
+    store = ArtifactStore(layout)
+    recovery = RuntimeRecovery(
+        layout=layout,
+        store=store,
+        checkpoints=FileCheckpointStore(layout),
+        langgraph=LangGraphBridge(layout),
+    )
+    snapshot = recovery.recover()
+    if snapshot.run_meta is None:
+        payload = _load_run_state(workspace)
+    else:
+        payload = snapshot.run_meta.to_dict()
+        payload["checkpoint_consistent"] = snapshot.checkpoint_consistent
+        payload["issues"] = snapshot.issues
     print(json.dumps(payload, indent=2, ensure_ascii=False))
     return 0
 
@@ -209,8 +227,9 @@ def handle_spec_plan(args) -> int:
     layout = WorkspaceLayout(workspace)
     backlog = store.load_backlog(draft=not layout.backlog_path.exists())
     tasks = [TaskItem.from_dict(item) for item in backlog.get("items", [])]
+    planning_contract = load_planning_contract(workspace)
     for task in tasks:
-        store.save_contract(build_contract(task))
+        store.save_contract(build_contract(task, planning_contract=planning_contract if planning_contract and planning_contract.is_ready else None))
     bridge.write_design(project, render_design(spec, tasks, decisions.get("decisions", [])))
     bridge.write_tasks(project, render_tasks(tasks))
     bridge.write_spec(

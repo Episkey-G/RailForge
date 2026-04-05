@@ -134,5 +134,8 @@ class ArtifactStore:
     def load_blocked_interrupt(self) -> Dict[str, Any]:
         return self.loader.load_blocked_interrupt()
 
+    def clear_blocked_interrupt(self) -> None:
+        self.writer.clear_blocked_interrupt()
+
     def record_progress(self, line: str) -> None:
         self.writer.record_progress(line)

@@ -35,6 +35,7 @@ from railforge.infra.run_logger import RunLogger
 from railforge.planner.backlog_builder import build_backlog
 from railforge.planner.clarification import analyze_request
 from railforge.planner.contract_builder import build_contract
+from railforge.planner.planning_contract import load_planning_contract
 from railforge.planner.task_selector import select_next_task
 
 from .commit_gate import evaluate_commit_gate
@@ -403,6 +404,7 @@ class RailForgeHarness:
             if not self.run_meta.resume_from_state:
                 raise ResumeError("blocked run has no resume_from_state")
             self.interrupts.record_unblock(reason=reason, note=note)
+            self.interrupts.clear_blocked()
             self.run_meta.state = RunState(self.run_meta.resume_from_state)
             self.run_meta.blocked_reason = None
             self.run_meta.repair_count = 0
@@ -423,6 +425,7 @@ class RailForgeHarness:
             self._recover_runtime()
             if self.run_meta.state == RunState.BLOCKED and self.run_meta.resume_from_state:
                 self.interrupts.record_unblock(reason=reason, note=note)
+                self.interrupts.clear_blocked()
                 self.run_meta.state = RunState(self.run_meta.resume_from_state)
                 self.run_meta.blocked_reason = None
                 self.run_meta.last_failure_signature = None
@@ -464,6 +467,7 @@ class RailForgeHarness:
             self.run_meta.state = RunState.STATIC_REVIEW
             self.run_meta.blocked_reason = None
             self.run_meta.resume_from_state = None
+            self.interrupts.clear_blocked()
             self.store.save_run_state(self.run_meta)
             self._snapshot()
             return self._drive()
@@ -500,6 +504,10 @@ class RailForgeHarness:
     def _transition(self, nxt: RunState) -> None:
         ensure_transition(self.run_meta.state, nxt)
         self.run_meta.state = nxt
+        if nxt != RunState.BLOCKED:
+            self.run_meta.blocked_reason = None
+            self.run_meta.resume_from_state = None
+            self.interrupts.clear_blocked()
         self.store.save_run_state(self.run_meta)
         self.logger.append("STATE -> %s" % nxt.value)
         self._snapshot()
@@ -564,6 +572,8 @@ class RailForgeHarness:
         self.run_meta = snapshot.run_meta
         if snapshot.current_task is not None:
             self.store.save_task(snapshot.current_task)
+        if self.run_meta.state != RunState.BLOCKED:
+            self.interrupts.clear_blocked()
         self.store.save_run_state(self.run_meta)
         if self.run_meta.state == RunState.FAILED:
             raise ResumeError(snapshot.failure_reason or "runtime recovery failed")
@@ -613,15 +623,22 @@ class RailForgeHarness:
         self._transition(RunState.SPEC_EXPANSION)
 
     def _handle_spec_expansion(self) -> None:
+        approved_spec = None
+        try:
+            approved_spec = self.store.load_product_spec()
+        except ArtifactNotFoundError:
+            approved_spec = None
         clarification = analyze_request(
             project=self.run_meta.project_name,
             request_text=self.run_meta.request_text,
             answers=self._load_answers(),
         )
-        self.store.save_product_spec(clarification.spec, draft=True)
+        if not (approved_spec and self._has_approval("spec")):
+            self.store.save_product_spec(clarification.spec, draft=True)
         self.store.save_questions(
             {
                 "questions": clarification.questions,
+                "resolved": clarification.resolved_questions,
                 "unresolved": clarification.unresolved_questions,
             }
         )
@@ -634,7 +651,7 @@ class RailForgeHarness:
             )
             return
 
-        final_spec = clarification.spec
+        final_spec = approved_spec if approved_spec and self._has_approval("spec") else clarification.spec
         final_spec.status = "approved" if self._has_approval("spec") else "ready_for_approval"
         final_spec.open_questions = []
         self.store.save_product_spec(final_spec, draft=False)
@@ -649,7 +666,8 @@ class RailForgeHarness:
 
     def _handle_backlog_build(self) -> None:
         spec = self.store.load_product_spec()
-        tasks = build_backlog(spec)
+        planning_contract = load_planning_contract(self.layout.root)
+        tasks = build_backlog(spec, planning_contract=planning_contract)
         self._persist_tasks(tasks, current_task=None, draft=True)
         if not self._has_approval("backlog"):
             self._block(
@@ -679,8 +697,18 @@ class RailForgeHarness:
 
     def _handle_contract_negotiation(self) -> None:
         task = self._current_task()
-        contract = build_contract(task)
-        self.contract_gate.validate(task=task, contract=contract)
+        planning_contract = load_planning_contract(self.layout.root)
+        try:
+            contract = build_contract(task, planning_contract=planning_contract if planning_contract and planning_contract.is_ready else None)
+            self.contract_gate.validate(task=task, contract=contract)
+        except ValueError as exc:
+            self._block(
+                reason="planning_execution_scope_mismatch",
+                resume_from_state=RunState.CONTRACT_NEGOTIATION,
+                note=str(exc),
+                task_id=task.id,
+            )
+            return
         self.store.save_contract(contract)
         self._transition(RunState.IMPLEMENTING)
 

@@ -20,7 +20,7 @@ description: Use when spec planning is approved and the full implementation loop
 
 ## Hosted Codex Loop
 
-1. 运行 `python -m railforge spec-impl`
+1. 运行 `railforge spec-impl`
 2. 由 workflow 进入 Hosted Codex 路径
 3. 内部使用：
    - `prepare-execution`

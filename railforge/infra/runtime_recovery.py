@@ -33,6 +33,7 @@ class RecoverySnapshot:
     checkpoint_consistent: bool = True
     issues: List[str] = field(default_factory=list)
     failure_reason: Optional[str] = None
+    blocked_interrupt: Dict[str, Any] = field(default_factory=dict)
 
 
 class RuntimeRecovery:
@@ -131,8 +132,21 @@ class RuntimeRecovery:
         checkpoint = self.checkpoints.load_latest_or_none()
         checkpoint_consistent = True
         langgraph_ref: Dict[str, Any] = {}
+        blocked_interrupt: Dict[str, Any] = {}
+        try:
+            blocked_interrupt = self.store.load_blocked_interrupt()
+        except ArtifactNotFoundError:
+            blocked_interrupt = {}
         if checkpoint is not None:
             checkpoint_state = checkpoint.get("run_state", {})
+            checkpoint_sequence = int(checkpoint.get("sequence", 0) or 0)
+            if (
+                checkpoint_state.get("run_id") == run_meta.run_id
+                and checkpoint_sequence > run_meta.checkpoint_index
+                and run_meta.current_task_id is None
+            ):
+                run_meta = RunMeta.from_dict(checkpoint_state)
+                issues.append("run_state_reconciled_from_checkpoint")
             checkpoint_task = (checkpoint.get("current_task") or {}).get("id")
             checkpoint_consistent = (
                 checkpoint_state.get("run_id") == run_meta.run_id
@@ -153,6 +167,12 @@ class RuntimeRecovery:
         else:
             run_meta.checkpoint_ref = None
 
+        if run_meta.state == RunState.BLOCKED and blocked_interrupt:
+            run_meta.blocked_reason = blocked_interrupt.get("reason") or run_meta.blocked_reason
+            run_meta.resume_from_state = blocked_interrupt.get("resume_from_state") or run_meta.resume_from_state
+        elif run_meta.state != RunState.BLOCKED and blocked_interrupt:
+            issues.append("stale_blocked_interrupt")
+
         failure_reason = self._failure_reason(run_meta, current_task)
         if failure_reason:
             run_meta.state = RunState.FAILED
@@ -170,6 +190,7 @@ class RuntimeRecovery:
             checkpoint_consistent=checkpoint_consistent,
             issues=issues,
             failure_reason=failure_reason,
+            blocked_interrupt=blocked_interrupt,
         )
 
     def _load_active_backlog(self) -> Dict[str, Any]:

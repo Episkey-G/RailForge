@@ -84,11 +84,18 @@ RailForge 安装器的 MCP 能力与 CCG 保持一致，安装菜单按以下分
     └── installer-state.json
 ```
 
-未来的二进制分发产物会下载到：
+安装器会把当前平台的预编译二进制下载到：
 
 ```text
-~/.codex/bin/railforge-<platform>-<arch>
-~/.codex/bin/railforge-codeagent-<platform>-<arch>
+~/.codex/bin/railforge
+~/.codex/bin/railforge-codeagent
+```
+
+GitHub Release 中发布的原始平台资产仍然使用带平台后缀的名字：
+
+```text
+railforge-<platform>-<arch>
+railforge-codeagent-<platform>-<arch>
 ```
 
 如果显式传入 `--target /some/base`，安装位置会变成：

@@ -1,5 +1,9 @@
+import pytest
+
 from railforge.planner.backlog_builder import build_backlog
+from railforge.planner.clarification import analyze_request
 from railforge.planner.contract_builder import build_contract
+from railforge.planner.planning_contract import PlanningContract
 from railforge.planner.spec_expander import expand_request
 from railforge.planner.task_selector import select_next_task
 
@@ -61,3 +65,50 @@ def test_contract_builder_includes_rollback_and_verification() -> None:
     assert contract.task_id == task.id
     assert contract.rollback
     assert contract.verification == task.verification
+
+
+def test_clarification_ignores_marketing_copy_without_error_anchor() -> None:
+    result = analyze_request(
+        project="PulseNotch",
+        request_text="为产品官网编写双语营销文案、Hero copy 和 CTA 文案，保持 clean-room。",
+    )
+
+    assert not any(item["id"] == "Q-003" for item in result.questions)
+
+
+def test_backlog_builder_respects_ready_planning_contract_scope() -> None:
+    spec = expand_request(project="PulseNotch", request_text="双语静态站点。共享资源层。")
+    planning_contract = PlanningContract(
+        status="ready_for_impl",
+        allowed_paths=["site/", "openspec/changes/PulseNotch/", ".railforge/planning/"],
+        deliverables=[
+            "bilingual landing page under site/",
+            "shared asset layer under site/assets/",
+            "zero-decision OpenSpec artifacts for PulseNotch landing page",
+        ],
+        locked_decisions=["provider 仅公开 Claude Code / Codex / Gemini CLI", "页面遵守 clean-room 边界"],
+    )
+
+    tasks = build_backlog(spec, planning_contract=planning_contract)
+
+    assert [task.title for task in tasks] == [
+        "实现前端能力：bilingual landing page under site/",
+        "实现前端能力：shared asset layer under site/assets/",
+    ]
+    assert tasks[0].allowed_paths == ["site/"]
+    assert "页面遵守 clean-room 边界" in tasks[0].done_definition
+    assert tasks[1].depends_on == ["T-001"]
+
+
+def test_contract_builder_rejects_scope_outside_planning_contract() -> None:
+    spec = expand_request(project="todo-app", request_text="前端提示")
+    task = build_backlog(spec)[0]
+    planning_contract = PlanningContract(
+        status="ready_for_impl",
+        allowed_paths=["site/"],
+        deliverables=["site landing page"],
+        locked_decisions=[],
+    )
+
+    with pytest.raises(ValueError):
+        build_contract(task, planning_contract=planning_contract)

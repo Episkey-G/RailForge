@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import platform
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 
@@ -25,21 +28,35 @@ def target_suffix() -> str:
     return f"{os_name}-{arch}"
 
 
-def build_binary(entry_module: str, output_name: str) -> None:
+def build_binary(entry_script: Path, output_name: str) -> None:
     subprocess.run(
         [
-            "pyinstaller",
+            sys.executable,
+            "-m",
+            "PyInstaller",
             "--noconfirm",
             "--clean",
             "--onefile",
             "--name",
             output_name,
-            "-m",
-            entry_module,
+            str(entry_script),
         ],
         cwd=ROOT,
         check=True,
     )
+
+
+def binary_output_name(base_name: str, suffix: str) -> str:
+    ext = ".exe" if platform.system().lower() == "windows" else ""
+    return f"{base_name}-{suffix}{ext}"
+
+
+def sha256_file(file_path: Path) -> str:
+    digest = hashlib.sha256()
+    with file_path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def main() -> None:
@@ -50,18 +67,41 @@ def main() -> None:
     DIST.mkdir(parents=True, exist_ok=True)
 
     suffix = target_suffix()
-    build_binary("railforge", f"railforge-{suffix}")
-    build_binary("railforge.codeagent", f"railforge-codeagent-{suffix}")
+    build_binary(ROOT / "railforge" / "__main__.py", f"railforge-{suffix}")
+    build_binary(ROOT / "railforge" / "codeagent" / "__main__.py", f"railforge-codeagent-{suffix}")
+
+    asset_names = [
+        binary_output_name("railforge", suffix),
+        binary_output_name("railforge-codeagent", suffix),
+    ]
+    manifest = {
+        "version": VERSION,
+        "target": suffix,
+        "assets": [],
+    }
+    for asset_name in asset_names:
+        asset_path = DIST / asset_name
+        manifest["assets"].append(
+            {
+                "name": asset_name,
+                "sha256": sha256_file(asset_path),
+                "size": asset_path.stat().st_size,
+            }
+        )
 
     (DIST / "manifest.txt").write_text(
         "\n".join(
             [
                 f"version={VERSION}",
                 f"target={suffix}",
-                f"files=railforge-{suffix},railforge-codeagent-{suffix}",
+                f"files={','.join(asset_names)}",
             ]
         )
         + "\n",
+        encoding="utf-8",
+    )
+    (DIST / f"manifest-{suffix}.json").write_text(
+        json.dumps(manifest, indent=2) + "\n",
         encoding="utf-8",
     )
 
